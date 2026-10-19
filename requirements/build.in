@@ -1,0 +1,5 @@
+# Inputs for the locked Windows build environment (compiled with uv; see scripts/lock.sh).
+networkx>=3.2
+pyinstaller>=6.10
+pytest>=8.0
+hypothesis>=6.100

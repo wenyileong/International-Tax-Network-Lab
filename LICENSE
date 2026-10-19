@@ -1,0 +1,10 @@
+Copyright (c) 2026 Leong Wen Yi. All rights reserved.
+
+No licence is granted at present. The choice of licence is an open decision recorded in
+docs/PROJECT_PLAN_v2_1.md (section 4.6 and Phase 0). Until a licence is published in this file,
+no permission is given to use, copy, modify or distribute this software or its documentation,
+except as permitted by law.
+
+Third-party components keep their own licences:
+  - Plotly.js (src/taxnetlab/web/vendor/plotly.min.js): MIT licence, Copyright 2012-2026 Plotly, Inc.
+  - NetworkX (runtime dependency): BSD 3-Clause licence.

@@ -1,34 +1,111 @@
 # International Tax Network Lab
 
-Local-first academic workbench for international-taxation network research.
+A local-first research workbench for analysing international tax and corporate ownership networks. It is built to implement published methods faithfully and keep them separate, to record exactly how every result was produced, and to let a researcher inspect, compare and export results to a standard fit for peer-reviewed work.
 
-## Build 0.1 status
-Includes a runnable Streamlit shell, synthetic data, shared graph utilities, run provenance, a Jupyter starter, tests, and method reconstruction registers.
+**Release 0.2 (Phase 1 of the project plan).** Core contracts, data layer, network views, run records with replay, a minimalist offline interface and a Windows executable. The three published-method engines (Garcia-Bernardo and others; van 't Riet and Lejour; US Patent 10,417,262 B2) are registered at *interface* status and refuse to run until their specifications have been transcribed and verified. See `docs/PROJECT_PLAN_v2_1.md` and `docs/BUILD_0_2_STATUS.md`.
 
-**The three methods are not assumed to be equivalent and are not yet claimed to be reproduced:**
-1. Optimal tax routing associated with van 't Riet and Lejour.
-2. Conduit and sink analysis associated with Garcia-Bernardo and co-authors.
-3. Scalable topological data analysis described in US Patent 10,417,262 B2.
+> The data shipped with the software are synthetic. Every jurisdiction, company, value and rate is fictional. The software gives no tax or legal advice, and network position, centrality or clustering is not evidence of avoidance, misconduct or illegality.
 
-The model modules fail explicitly until their primary-source specifications have been transcribed and validated. This avoids inventing formulas or passing generic algorithms off as reproductions.
+## Using the Windows executable
 
-## Setup
-Python 3.10+ recommended.
+1. Download `taxnetlab.exe` and `SHA256SUMS.txt` from the latest GitHub Release, or from the `taxnetlab-windows-x64` artefact of the latest successful **CI** workflow run.
+2. Optionally check the file: `certutil -hashfile taxnetlab.exe SHA256` should print the value in `SHA256SUMS.txt`.
+3. Double-click `taxnetlab.exe`. A console window opens and shows the local address; the interface opens in your default browser. The executable is unsigned, so Windows SmartScreen may ask you to confirm (More info, then Run anyway).
+4. Close the console window, or press **Quit** in the interface, to stop.
+
+No installation, Python or administrator rights are needed, and nothing is sent over the network. The server listens on `127.0.0.1` only, from port 8766 (the JAF Rule Bench uses 8765, so both can run together).
+
+Your work is kept in a **workspace** folder: `Documents\TaxNetLab` on Windows (`~/TaxNetLab` elsewhere). Use `taxnetlab.exe serve --workspace D:\path\to\folder` or the `TAXNETLAB_WORKSPACE` environment variable to choose another.
+
+Command-line use of the same executable:
+
+```text
+taxnetlab.exe                       start the interface (same as "serve")
+taxnetlab.exe generate --seed 42    create a synthetic dataset
+taxnetlab.exe datasets              list datasets
+taxnetlab.exe run spec.json         execute a run specification
+taxnetlab.exe replay RUN_ID         re-execute a stored run and compare hashes
+taxnetlab.exe selftest              end-to-end check in a temporary workspace
+taxnetlab.exe version               version, build and environment details
+```
+
+A run specification is a small JSON file:
+
+```json
+{"engine_id": "demo.link_summary", "dataset_id": "d4ee06ae7a4282d4",
+ "parameters": {"relation_type": "equity"}, "research_question": "..."}
+```
+
+## The interface
+
+| Page | What it shows |
+|---|---|
+| Overview | Size and composition of the dataset, ownership-fraction distribution, validation report. |
+| Network | Ownership (holder → held), value-flow (held → holder) or jurisdiction-aggregated views. Edge colour and width show the size of each relation; node colour shows the jurisdiction. Click a node for its records. |
+| Matrix | Holder-jurisdiction by held-jurisdiction heatmap under a stated aggregation rule. |
+| Data | Table viewer and CSV download, validation report, synthetic generator and CSV import. |
+| Runs | Execute an engine, inspect outputs, calculation trace and full record, replay, download. |
+| Methods | Every registered engine with its status, boundary and next step. |
+| About | Version, build, source commit, lock-file hash, workspace. |
+
+Every chart can be downloaded as PNG, SVG or CSV. Charts and exports from synthetic data, demonstration engines or unverified methods carry a visible watermark.
+
+## Data format
+
+A dataset is a set of CSV tables with header rows; columns are matched by name, in any order. Required tables: `sources`, `jurisdictions`, `entities`, `ownership`. Optional: `jurisdiction_attributes`, `illustrative_tax_edges`. Column definitions are in `src/taxnetlab/schema.py`; the Data page shows them for each table. Conventions:
+
+* shares and rates are fractions in [0, 1]; money is an amount plus an ISO 4217 currency;
+* real jurisdictions use ISO 3166-1 alpha-3 codes; fictional ones use the `FIC_` prefix;
+* ownership is stored as direct relations, holder → held; indirect holdings are derived, never stored;
+* natural persons must be excluded or pseudonymised before import;
+* nothing is repaired or imputed silently, and synthetic records may never be attributed to a real jurisdiction.
+
+Datasets are content-addressed: the dataset id is derived from a SHA-256 hash of the canonical form of its tables, so the same content always has the same id.
+
+## Running from source
+
+Python 3.11 or newer.
 
 ```bash
 python -m venv .venv
-# Windows PowerShell: .venv\Scripts\Activate.ps1
-# macOS/Linux: source .venv/bin/activate
-python -m pip install --upgrade pip
-pip install -e ".[app,notebook,test]"
-pytest
-streamlit run app.py
+# Windows: .venv\Scripts\activate    macOS/Linux: source .venv/bin/activate
+python -m pip install -e ".[test]"
+python -m pytest
+python -m taxnetlab            # start the interface
 ```
 
-Open `notebooks/01_research_workbench.ipynb` in JupyterLab after installation.
+Notebook users: `pip install -e ".[notebook]"` and open `notebooks/01_research_workbench.ipynb`. The notebook uses the same service layer and workspace as the interface.
 
-## Synthetic data warning
-Jurisdictions (`JUR_A` etc.), companies, rates, values and links are fictional and only test software behaviour. They are not tax advice, legal statements about real countries, or empirical findings.
+## Building the executable
 
-## Lawful data access
-Before importing real data, check the source's licence, terms of use, database rights, redistribution limits, privacy obligations and automated-access restrictions. Prefer official public sources and documented APIs. Do not bypass access controls. Record source, access date, terms, transformations and limitations.
+CI builds `taxnetlab.exe` on a Windows runner from the hash-locked environment in `requirements/windows-build.lock`, runs `taxnetlab.exe selftest` on the result and publishes it as an artefact (and as a Release asset for tags `v*`). To build locally on Windows:
+
+```bat
+python -m pip install --require-hashes -r requirements\windows-build.lock
+python -m pip install --no-deps -e .
+python scripts\write_build_manifest.py requirements\windows-build.lock
+pyinstaller --noconfirm --clean packaging\taxnetlab.spec
+dist\taxnetlab.exe selftest
+```
+
+## Languages
+
+All interface text is loaded from `src/taxnetlab/web/locales/<tag>.json`. English (UK) is complete. To add a language, see `docs/TRANSLATING.md`; the language menu picks up new files automatically, and right-to-left scripts are supported through the locale's `dir` setting.
+
+## Project documents
+
+* `docs/PROJECT_PLAN_v2_1.md`: plan, status ladders, phases and release gates.
+* `docs/BUILD_0_2_STATUS.md`: what this release contains, the pre-build logical evaluation and test results.
+* `docs/METHOD_RECONSTRUCTION_REGISTER.md`: verification checklists for the three published methods.
+* `docs/specs/`: specifications of implemented engines.
+* `CHANGELOG.md`.
+
+## Licence and citation
+
+All rights reserved pending the licence decision recorded in the project plan (s 4.6). See `LICENSE`. Citation metadata is in `CITATION.cff`.
+
+Plotly.js (MIT licence) is bundled in `src/taxnetlab/web/vendor/` so that the interface works offline.
+
+## Acknowledgements
+
+Development of this software was assisted by Claude (Anthropic), an AI model, under the direction of the author, who is responsible for its design decisions and content.

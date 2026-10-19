@@ -1,0 +1,17 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "International Tax Network Lab"
+type: software
+version: 0.2.0
+date-released: 2026-10-20
+authors:
+  - family-names: Leong
+    given-names: Wen Yi
+    orcid: "https://orcid.org/0009-0005-5691-1270"
+abstract: >-
+  A local-first research workbench for analysing international tax and corporate ownership
+  networks, with independently verified method engines, immutable run records and replay.
+keywords:
+  - international taxation
+  - corporate ownership networks
+  - reproducible research
