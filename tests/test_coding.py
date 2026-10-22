@@ -108,3 +108,25 @@ def test_server_template_and_zip_import(server_url_token):
     assert json.loads(urllib.request.urlopen(req, timeout=10).read())["saved"]
     real = urllib.request.urlopen(url + "api/templates/real_sample.zip?jurisdictions=MYS,SGP", timeout=10).read()
     assert "MYS" in coding.read_template_zip(real)["tax_domestic"]
+
+
+def test_column_mapping_for_source_exports():
+    """An export with its own headers (an Orbis-like ownership file) is mapped onto the schema."""
+    from taxnetlab.fixtures import gb_fixture
+
+    ds = gb_fixture()
+    texts = {t: ds.csv_text(t) for t in ds.tables}
+    own = list(csv.DictReader(io.StringIO(texts["ownership"])))
+    buf = io.StringIO()
+    w = csv.writer(buf, lineterminator="\n")
+    w.writerow(["Link ID", "Shareholder BvD ID", "Subsidiary BvD ID", "Direct %", "type", "direct", "valid_from"])
+    for r in own:
+        w.writerow([r["relation_id"], r["holder_id"], r["held_id"], r["fraction"], r["relation_type"], r["direct"], r["valid_from"]])
+    texts["ownership"] = buf.getvalue()
+    mapping = {"ownership": {"relation_id": "Link ID", "holder_id": "shareholder bvd id", "held_id": "Subsidiary BvD ID",
+                             "fraction": "Direct %", "relation_type": "type", "source_id": "=" + own[0]["source_id"]}}
+    mapped, report = Dataset.from_csv_texts("mapped", texts, mapping=mapping)
+    assert mapped is not None, report.format_text()
+    assert mapped.dataset_id == ds.dataset_id  # the same content, whatever the source's headers
+    bad = {"ownership": {**mapping["ownership"], "held_id": "Nope"}}
+    assert Dataset.from_csv_texts("bad", texts, mapping=bad)[0] is None

@@ -16,6 +16,7 @@ from taxnetlab.canonical import canonical_csv, combine_hashes, sha256_text
 from taxnetlab.schema import (
     ASSUMPTION_CONDITIONS,
     CURRENCY_RE,
+    LEGAL_TABLES,
     FICTIONAL_PREFIX,
     ISO3_RE,
     REQUIRED_TABLES,
@@ -23,9 +24,50 @@ from taxnetlab.schema import (
     TABLE_ORDER,
     parse_table,
 )
+from taxnetlab.registry import is_assigned
 from taxnetlab.validation import ValidationError, ValidationReport
 
 EQUITY_TOLERANCE = 1e-6
+
+
+def apply_mapping(table: str, header: list[str], rows: list[dict[str, str]], spec: dict[str, str],
+                  report: ValidationReport) -> tuple[list[str], list[dict[str, str]]]:
+    """Map source columns to schema columns (plan Phase 2 and 7: importing exports such as Orbis).
+
+    ``spec`` maps a schema column to a source header, or to ``=value`` for a constant (for example
+    ``{"holder_id": "Shareholder BvD ID", "source_id": "=ORBIS_2025"}``). Unmapped source columns are
+    kept under their own names; a mapped header that is absent is an error. Nothing else is changed."""
+    if table not in SCHEMAS:
+        report.warning("unknown_table", f"mapping for unknown table '{table}' ignored", table=table, params={"table": table})
+        return header, rows
+    known = {c.name for c in SCHEMAS[table].columns}
+    lower = {h.lower(): h for h in header}
+    out_rows = [dict(r) for r in rows]
+    for target, source in spec.items():
+        if target not in known:
+            report.error("bad_mapping", f"'{target}' is not a column of {table}", table=table, params={"column": target})
+            continue
+        if isinstance(source, str) and source.startswith("="):
+            for r in out_rows:
+                r[target] = source[1:]
+            continue
+        actual = lower.get(str(source).lower())
+        if actual is None:
+            report.error("bad_mapping", f"source column '{source}' (for {target}) is not in the file", table=table,
+                         params={"column": str(source)})
+            continue
+        for r in out_rows:
+            r[target] = r.get(actual, "")
+    new_header = list(dict.fromkeys([*spec.keys(), *[h for h in header if h not in spec.keys()]]))
+    report.info("mapping_applied", f"{len(spec)} column(s) mapped for {table}", table=table, params={"table": table})
+    return new_header, out_rows
+
+
+def _key_part(value: Any) -> str:
+    """Primary-key values as written in rule_verifications.row_key (canonical cell form)."""
+    from taxnetlab.canonical import format_cell
+
+    return format_cell(value)
 
 
 @dataclass
@@ -44,9 +86,11 @@ class Dataset:
 
     @classmethod
     def from_csv_texts(
-        cls, name: str, texts: dict[str, str], metadata: dict[str, Any] | None = None
+        cls, name: str, texts: dict[str, str], metadata: dict[str, Any] | None = None,
+        mapping: dict[str, dict[str, str]] | None = None,
     ) -> tuple["Dataset | None", ValidationReport]:
-        """Build from CSV text per table (for imports). Columns are matched by header."""
+        """Build from CSV text per table (for imports). Columns are matched by header, after an optional
+        column mapping per table (see :func:`apply_mapping`)."""
         raw: dict[str, tuple[list[str] | None, list[dict[str, Any]]]] = {}
         report = ValidationReport()
         for table, text in texts.items():
@@ -55,10 +99,13 @@ class Dataset:
             text = text.lstrip("﻿")  # tolerate a UTF-8 byte-order mark (common from spreadsheet tools)
             reader = csv.DictReader(io.StringIO(text))
             header = list(reader.fieldnames or [])
-            raw[table] = (header, list(reader))
+            rows = list(reader)
+            if mapping and table in mapping:
+                header, rows = apply_mapping(table, header, rows, mapping[table], report)
+            raw[table] = (header, rows)
         dataset, rep = cls._build(name, raw, metadata)
         report.extend(rep)
-        return dataset, report
+        return (dataset if report.ok else None), report
 
     @classmethod
     def _build(cls, name, raw, metadata):
@@ -134,6 +181,9 @@ class Dataset:
                 elif not ISO3_RE.match(jid):
                     r.error("bad_iso3", f"real jurisdiction id '{jid}' must be an ISO 3166-1 alpha-3 code",
                             table="jurisdictions", row=n, params={"id": jid})
+                elif not is_assigned(jid):
+                    r.warning("iso3_not_assigned", f"'{jid}' is not an assigned ISO 3166-1 alpha-3 code",
+                              table="jurisdictions", row=n, params={"id": jid})
                 if j.get("iso3") and j["iso3"] != jid:
                     r.error("iso3_mismatch", f"iso3 '{j['iso3']}' differs from id '{jid}'", table="jurisdictions",
                             row=n, params={"id": jid, "iso3": j["iso3"]})
@@ -272,6 +322,29 @@ class Dataset:
             elif cond in ASSUMPTION_CONDITIONS and thr is not None:
                 r.warning("threshold_ignored", f"'{cond}' takes no threshold; it is ignored", table="tax_treaty_conditions",
                           row=n, column="threshold", params={"condition": cond})
+
+        # verification log (plan s 5.4)
+        legal_keys = {tb: {"|".join(str(_key_part(row[k])) for k in SCHEMAS[tb].primary_key): row for row in t[tb]}
+                      for tb in LEGAL_TABLES}
+        logged: dict[tuple[str, str], list[str]] = defaultdict(list)
+        for n, v in enumerate(t["rule_verifications"], start=1):
+            row = legal_keys[v["table_name"]].get(v["row_key"])
+            if row is None:
+                r.error("verification_unknown_row", f"no {v['table_name']} row with key '{v['row_key']}'",
+                        table="rule_verifications", row=n, column="row_key", params={"id": v["row_key"]})
+                continue
+            if v.get("source_id"):
+                check_source("rule_verifications", n, v["source_id"])
+            logged[(v["table_name"], v["row_key"])].append(v["outcome"])
+        for tb, rows in legal_keys.items():
+            for key, row in rows.items():
+                outcomes = logged.get((tb, key), [])
+                if row["verified"] and not outcomes and not is_synthetic_source(row["source_id"]):
+                    r.info("verified_without_log", "row marked verified with no entry in rule_verifications",
+                           table=tb, params={"id": key})
+                if outcomes and outcomes[-1] == "confirmed" and not row["verified"]:
+                    r.warning("logged_but_unverified", "the latest verification confirms the row but verified is false",
+                              table=tb, params={"id": key})
 
         for n, f in enumerate(t["entity_financials"], start=1):
             e = entities.get(f["entity_id"])

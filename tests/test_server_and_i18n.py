@@ -123,7 +123,7 @@ def test_every_static_key_used_in_interface_exists():
 FAMILY_PREFIXES = ("status.", "outcome.", "table.", "rule.", "view.", "track.", "col.", "dir.", "level.", "banner.",
                    "gen.", "integrity.", "network.colour.", "overview.band.", "entity_type.", "issue.", "choice.",
                    "param.", "output.", "measure.demo.", "relief.", "routes.basis.", "routes.c.", "routes.ov.", "routes.wa.",
-                   "routes.w.", "routes.part.", "routes.k.", "routes.", "guide.", "conduits.", "mode.", "topology.f.", "compare.class.")
+                   "routes.w.", "routes.part.", "routes.k.", "routes.", "guide.", "conduits.", "mode.", "topology.f.", "compare.class.", "rep.verdict.")
 
 
 def test_dynamic_key_families_complete():
@@ -147,6 +147,7 @@ def test_dynamic_key_families_complete():
         "param.": {p.name for e in __import__("taxnetlab.engines", fromlist=["list_engines"]).list_engines() for p in e.parameters},
         "output.": {o for e in __import__("taxnetlab.engines", fromlist=["list_engines"]).list_engines() for o in e.outputs},
         "compare.class.": {"sink_ofc", "conduit_ofc"},
+        "rep.verdict.": {"replicated", "replicated_with_discrepancies", "not_replicated", "invalid"},
         "topology.f.": set(__import__("taxnetlab.features", fromlist=["CATALOGUE"]).CATALOGUE),
         "choice.": {c for e in __import__("taxnetlab.engines", fromlist=["list_engines"]).list_engines()
                     for p in e.parameters for c in (p.choices or ())},

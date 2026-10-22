@@ -15,6 +15,7 @@ from __future__ import annotations
 import math
 from typing import Any
 
+from taxnetlab import progress
 from taxnetlab import features as fm
 from taxnetlab.canonical import canonical_json, sha256_text
 from taxnetlab.datasets import Dataset
@@ -217,6 +218,7 @@ class PersistentHomologyEngine(Engine):
                             f"({params['influence_limit']}).")
         if do_influence:
             for k in range(n):
+                progress.report(k, n, "influence")
                 Dk = [[D[i][j] for j in range(n) if j != k] for i in range(n) if i != k]
                 q = rips_persistence(Dk, params["max_dimension"], max_scale, params["simplex_budget"])
                 h0 = bottleneck(pers.diagram(0), q.diagram(0))

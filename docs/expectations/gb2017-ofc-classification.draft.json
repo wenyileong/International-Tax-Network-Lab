@@ -1,0 +1,70 @@
+{
+  "entry_id": "gb2017-ofc-classification",
+  "status": "draft (not frozen): to be checked against the source and frozen by the author before any run on real data",
+  "title": "Sink-OFCs and conduit-OFCs in Garcia-Bernardo and others (2017)",
+  "engine_id": "gb2017.conduits_sinks",
+  "source": "Javier Garcia-Bernardo, Jan Fichtner, Frank W Takes and Eelke M Heemskerk, 'Uncovering Offshore Financial Centers: Conduits and Sinks in the Global Corporate Ownership Network' (2017) 7 Scientific Reports 6246, Table 1 and p 6",
+  "transcription": "Sink list from Table 1 via automated extraction of the open-access version (Leiden University repository), ISO 3166-1 alpha-2 codes converted to alpha-3; conduit list quoted from p 6. Check against the published table before freezing.",
+  "data_requirement": "Orbis global ownership (the source used 2015 data) with operating revenue; GDP for the same year; ISO alpha-3 identifiers.",
+  "parameters": {
+    "sink_threshold": 10,
+    "conduit_threshold": 1
+  },
+  "comparisons": [
+    {
+      "label": "Sink-OFCs (24)",
+      "kind": "set",
+      "output": "jurisdictions",
+      "key": "jurisdiction_id",
+      "flag": "is_sink",
+      "expected": [
+        "VGB",
+        "TWN",
+        "JEY",
+        "BMU",
+        "CYM",
+        "WSM",
+        "LIE",
+        "CUW",
+        "MHL",
+        "MLT",
+        "MUS",
+        "LUX",
+        "NRU",
+        "CYP",
+        "SYC",
+        "BHS",
+        "BLZ",
+        "GIB",
+        "AIA",
+        "LBR",
+        "VCT",
+        "GUY",
+        "HKG",
+        "MCO"
+      ],
+      "statistic": "jaccard",
+      "threshold": 0.8
+    },
+    {
+      "label": "Conduit-OFCs (5)",
+      "kind": "set",
+      "output": "jurisdictions",
+      "key": "jurisdiction_id",
+      "flag": "is_conduit",
+      "expected": [
+        "NLD",
+        "GBR",
+        "CHE",
+        "SGP",
+        "IRL"
+      ],
+      "statistic": "jaccard",
+      "threshold": 0.8
+    }
+  ],
+  "decision_rule": {
+    "replicated_if": "every comparison passes",
+    "discrepancies_if_share_at_least": 0.5
+  }
+}

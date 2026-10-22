@@ -7,6 +7,7 @@
     taxnetlab replay RUN_ID
     taxnetlab template illustrative|real-sample [--jurisdictions NLD,LUX] [--out FILE]
     taxnetlab import FILE.zip|FOLDER [--name TEXT]
+    taxnetlab expect list | freeze FILE --by NAME | check ENTRY_ID --run RUN_ID
     taxnetlab selftest
     taxnetlab version
 """
@@ -96,10 +97,12 @@ def cmd_template(args: argparse.Namespace) -> int:
 def cmd_import(args: argparse.Namespace) -> int:
     path = Path(args.path)
     api = _api(args)
+    mapping = json.loads(Path(args.mapping).read_text(encoding="utf-8")) if args.mapping else None
     if path.is_dir():
-        res = api.import_csv(args.name or path.name, {f.stem: f.read_text(encoding="utf-8-sig") for f in path.glob("*.csv")})
+        res = api.import_csv(args.name or path.name, {f.stem: f.read_text(encoding="utf-8-sig") for f in path.glob("*.csv")},
+                             mapping)
     else:
-        res = api.import_zip(args.name or path.stem, path.read_bytes())
+        res = api.import_zip(args.name or path.stem, path.read_bytes(), mapping)
     for issue in res["validation"]["issues"]:
         if issue["level"] != "info":
             print(f"  {issue['level']}: {issue['code']}: {issue['message']}" + (f" ({issue['table']} row {issue['row']})" if issue.get("table") else ""),
@@ -109,6 +112,29 @@ def cmd_import(args: argparse.Namespace) -> int:
         return 2
     print(f"{res['dataset_id']}  {res['name']}")
     return 0
+
+
+def cmd_expect(args: argparse.Namespace) -> int:
+    api = _api(args)
+    if args.action == "list":
+        for e in api.expectations():
+            print(f"{e['entry_id']:40} {e['state']:8} {e['frozen_utc'] or '':21} {e['title'] or e['error']}")
+        return 0
+    if args.action == "freeze":
+        if not args.by:
+            print("--by NAME is required to freeze an entry", file=sys.stderr)
+            return 2
+        entry = api.freeze_expectation(json.loads(Path(args.target).read_text(encoding="utf-8")), args.by)
+        print(f"frozen {entry['entry_id']}  sha256={entry['entry_sha256']}")
+        return 0
+    if args.action == "check":
+        if not args.run:
+            print("--run RUN_ID is required", file=sys.stderr)
+            return 2
+        rep = api.check_replication(args.target, args.run)
+        print(json.dumps(rep, indent=2))
+        return 0 if rep["verdict"] in ("replicated", "replicated_with_discrepancies") else 1
+    return 2
 
 
 def cmd_version(args: argparse.Namespace) -> int:
@@ -167,6 +193,8 @@ def cmd_selftest(args: argparse.Namespace) -> int:
 
         imported = api.import_zip("Illustrative template", template_zip("illustrative"))
         check(imported["saved"], "illustrative coding template imports")
+        job = api.jobs.wait(api.jobs.submit({"engine_id": "demo.link_summary", "dataset_id": did})["job_id"], 60)
+        check(job["state"] == "done" and api.replay(job["run_id"])["match"], "background job runs and replays")
 
         server = AppServer(api, find_port(18766))
         t = threading.Thread(target=server.serve_forever, daemon=True)
@@ -241,7 +269,15 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("import", parents=[common], help="import a coding template ZIP or a folder of table CSV files")
     p.add_argument("path")
     p.add_argument("--name")
+    p.add_argument("--mapping", help="JSON file: {table: {schema_column: source_header or =constant}}")
     p.set_defaults(func=cmd_import)
+
+    p = sub.add_parser("expect", parents=[common], help="expectation register: list, freeze FILE --by NAME, check ID --run RUN")
+    p.add_argument("action", choices=("list", "freeze", "check"))
+    p.add_argument("target", nargs="?", help="draft JSON file (freeze) or entry id (check)")
+    p.add_argument("--by", help="who freezes the entry")
+    p.add_argument("--run", help="run id to check")
+    p.set_defaults(func=cmd_expect)
 
     p = sub.add_parser("version", help="show version and environment")
     p.set_defaults(func=cmd_version)

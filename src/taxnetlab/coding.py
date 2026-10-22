@@ -23,11 +23,12 @@ from typing import Any
 from taxnetlab import __version__
 from taxnetlab.canonical import canonical_csv
 from taxnetlab.fixtures import PERIOD, vtrl_fixture
+from taxnetlab.registry import iso3_names
 from taxnetlab.schema import ISO3_RE, SCHEMAS
 from taxnetlab.synthetic import SYNTHETIC_SOURCE
 
 TEMPLATE_TABLES = ("sources", "jurisdictions", "jurisdiction_attributes", "entities", "ownership", "tax_domestic",
-                   "tax_treaty_dividends", "tax_relief_overrides", "tax_treaty_conditions")
+                   "tax_treaty_dividends", "tax_relief_overrides", "tax_treaty_conditions", "rule_verifications")
 LEGAL_TABLES = ("tax_domestic", "tax_treaty_dividends", "tax_relief_overrides", "tax_treaty_conditions")
 LAYERS = ("key", "liability", "collection", "observation", "provenance", "reference")
 DEFAULT_CANDIDATES = ("NLD", "LUX", "IRL", "GBR", "USA", "DEU", "FRA", "CHE", "SGP", "HKG", "MYS", "CHN", "CYP", "MLT", "BEL")
@@ -93,6 +94,14 @@ DICTIONARY: dict[tuple[str, str], tuple[str, str]] = {
     ("tax_treaty_conditions", "verified"): ("provenance", "As for tax_domestic."),
     ("tax_treaty_conditions", "source_id"): ("provenance", "Treaty, Multilateral Instrument or other source."),
     ("tax_treaty_conditions", "note"): ("provenance", "Verifier, date and notes."),
+    ("rule_verifications", "table_name"): ("key", "Legal table of the row checked."),
+    ("rule_verifications", "row_key"): ("key", "The row's primary key values joined by '|', for example NLD|2025 or NLD|LUX|2025."),
+    ("rule_verifications", "verified_on"): ("key", "Date of the check (YYYY-MM-DD)."),
+    ("rule_verifications", "verified_by"): ("provenance", "Who checked the row."),
+    ("rule_verifications", "outcome"): ("provenance", "confirmed, corrected (the row was changed) or rejected (the row is wrong and unused)."),
+    ("rule_verifications", "source_id"): ("provenance", "Source consulted, if different from the row's source."),
+    ("rule_verifications", "pinpoint"): ("provenance", "Article, section or page consulted."),
+    ("rule_verifications", "note"): ("provenance", "Notes on the check."),
 }
 REFERENCE_TABLES = ("entities", "ownership")  # included header-only; described in the schema documentation
 
@@ -166,7 +175,7 @@ def real_sample_tables(candidates: list[str], period: str = PERIOD) -> dict[str,
         raise ValueError(f"candidate jurisdictions must be ISO 3166-1 alpha-3 codes; not valid: {bad or 'none given'}")
     return {
         "sources": [{"source_id": "SRC_01", "title": None, "licence_class": None}],
-        "jurisdictions": [{"jurisdiction_id": c, "display_name": None, "iso3": c, "fictional": False,
+        "jurisdictions": [{"jurisdiction_id": c, "display_name": iso3_names().get(c), "iso3": c, "fictional": False,
                            "parent_jurisdiction_id": None} for c in codes],
         "jurisdiction_attributes": [{"jurisdiction_id": c, "attribute": "gdp", "period": period, "value": None,
                                      "unit": None, "currency": None, "source_id": None} for c in codes],
@@ -174,7 +183,7 @@ def real_sample_tables(candidates: list[str], period: str = PERIOD) -> dict[str,
         "tax_domestic": [{"jurisdiction_id": c, "period": period, "cit_rate": None, "dividend_wht_rate": None,
                           "relief_method": None, "rule_status": None, "verified": False, "source_id": None, "note": None}
                          for c in codes],
-        "tax_treaty_dividends": [], "tax_relief_overrides": [], "tax_treaty_conditions": [],
+        "tax_treaty_dividends": [], "tax_relief_overrides": [], "tax_treaty_conditions": [], "rule_verifications": [],
     }
 
 

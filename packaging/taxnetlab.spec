@@ -15,6 +15,7 @@ datas = [
     (str(PKG / "web" / "vendor" / "plotly.min.js"), "taxnetlab/web/vendor"),
 ]
 datas += [(str(p), "taxnetlab/web/locales") for p in sorted((PKG / "web" / "locales").glob("*.json"))]
+datas += [(str(p), "taxnetlab/data") for p in sorted((PKG / "data").glob("*.json"))]
 if (PKG / "_build_manifest.json").exists():
     datas.append((str(PKG / "_build_manifest.json"), "taxnetlab"))
 

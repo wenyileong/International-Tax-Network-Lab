@@ -38,6 +38,8 @@ CONSOLIDATION = ("unconsolidated", "deconsolidated", "consolidated")
 MECHANICAL_CONDITIONS = ("min_holding", "min_holding_days", "subject_to_tax")
 ASSUMPTION_CONDITIONS = ("beneficial_ownership", "ppt", "lob")
 TREATY_CONDITIONS = MECHANICAL_CONDITIONS + ASSUMPTION_CONDITIONS
+LEGAL_TABLES = ("tax_domestic", "tax_treaty_dividends", "tax_relief_overrides", "tax_treaty_conditions")
+VERIFICATION_OUTCOMES = ("confirmed", "corrected", "rejected")
 RATE_MAX = 0.9999  # a rate of 100% would make every later formula degenerate
 
 STR, FLOAT, BOOL, DATE = "str", "float", "bool", "date"
@@ -248,6 +250,23 @@ SCHEMAS: dict[str, TableSchema] = {
         "and limitation-on-benefits tests, which stay indeterminate unless a scenario assumption resolves them.",
         added_in=2,
     ),
+    "rule_verifications": TableSchema(
+        "rule_verifications",
+        (
+            _c("table_name", req=True, null=False, choices=LEGAL_TABLES),
+            _c("row_key", req=True, null=False),
+            _c("verified_on", DATE, req=True, null=False),
+            _c("verified_by", req=True, null=False),
+            _c("outcome", req=True, null=False, choices=VERIFICATION_OUTCOMES),
+            _c("source_id", identifier=True),
+            _c("pinpoint"),
+            _c("note"),
+        ),
+        ("table_name", "row_key", "verified_on"),
+        "Verification log for legal rows (plan s 5.4): who checked which row against which source, when, and with "
+        "what outcome. row_key is the row's primary key values joined by '|' in key order.",
+        added_in=2,
+    ),
     "entity_financials": TableSchema(
         "entity_financials",
         (
@@ -268,7 +287,7 @@ SCHEMAS: dict[str, TableSchema] = {
 #: Tables in dependency order (referenced tables first).
 TABLE_ORDER = ("sources", "jurisdictions", "jurisdiction_attributes", "entities", "ownership", "illustrative_tax_edges",
                "tax_domestic", "tax_treaty_dividends", "tax_relief_overrides", "entity_financials",
-               "tax_treaty_conditions")
+               "tax_treaty_conditions", "rule_verifications")
 TAX_TABLES = ("tax_domestic", "tax_treaty_dividends", "tax_relief_overrides", "tax_treaty_conditions")
 REQUIRED_TABLES = ("sources", "jurisdictions", "entities", "ownership")
 

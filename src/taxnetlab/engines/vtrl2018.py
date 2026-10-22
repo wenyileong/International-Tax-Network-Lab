@@ -25,6 +25,7 @@ import math
 from collections import defaultdict
 from typing import Any
 
+from taxnetlab import progress
 from taxnetlab.datasets import Dataset
 from taxnetlab.engines.base import (
     INVALID_INPUT,
@@ -334,13 +335,15 @@ class TaxRoutingEngine(Engine):
         # Admissible lower bounds h_P(u): cheapest cost from intermediate u to P on non-first legs,
         # with the penalty counted for u and every later intermediate (reverse Dijkstra).
         h: dict[str, dict[str, float]] = {p: self._reverse_bounds(world, p, mu) for p in codes}
+        fast = _Arrays(world, codes, h, mu)
 
         pair_rows, leg_rows = [], []
         sets: dict[tuple[str, str], dict[str, Any]] = {}
         capped_pairs = 0
         budget = params["route_budget"]
         budget_hit = False
-        for s in codes:
+        for si, s in enumerate(codes):
+            progress.report(si, len(codes), f"routes from {s}")
             dist, prev = self._dijkstra(world, s, mu)
             for p in codes:
                 if p == s:
@@ -362,26 +365,26 @@ class TaxRoutingEngine(Engine):
                 bound = 1 - te_pen_best - params["tolerance"]
                 limit_range = math.inf if bound <= 0 else -math.log(bound / (1 - t_s))
                 per_pair = min(params["max_routes_per_pair"], max(budget, 1))
-                rng = self._enumerate(world, s, p, max(limit_range, limit_strict) if not budget_hit else limit_strict,
-                                      depth, h[p], mu, per_pair)
+                rng = fast.count(s, p, max(limit_range, limit_strict) if not budget_hit else limit_strict, limit_strict,
+                                 depth, per_pair)
                 if budget_hit:
                     rng["capped"] = True
-                budget -= len(rng["routes"])
+                budget -= rng["n"]
                 if budget <= 0 and not budget_hit:
                     budget_hit = True
-                strict_routes = [rt for rt, k in rng["routes"] if k <= limit_strict]
-                range_routes = [rt for rt, k in rng["routes"] if k <= limit_range or k <= limit_strict]
-                if not strict_routes:  # cannot happen: the Dijkstra route is within the depth bound
-                    strict_routes = [route]
+                if not rng["n_strict"]:  # cannot happen: the Dijkstra route is within the depth bound
+                    rng["n_strict"], rng["strict"] = 1, {c: 1 for c in route[1:-1]}
+                if not rng["n"]:
+                    rng["n"], rng["range"] = rng["n_strict"], dict(rng["strict"])
                 capped = rng["capped"]
                 capped_pairs += capped
-                sets[(s, p)] = {"strict": strict_routes, "range": range_routes or strict_routes}
+                sets[(s, p)] = rng
                 pair_rows.append({
                     "host": s, "home": p, "direct_relief": direct["relief"], "direct_wht": direct["w"],
                     "direct_wht_basis": direct["w_basis"], "direct_d": _r(direct["d"]), "direct_te": _r(te_direct),
                     "best_d": _r(d_best), "best_te": _r(te_best), "best_route": ">".join(route),
                     "intermediates": m_best, "shop": _r(te_direct - te_best),
-                    "routes_in_range": len(sets[(s, p)]["range"]), "routes_strict": len(strict_routes),
+                    "routes_in_range": rng["n"], "routes_strict": rng["n_strict"],
                     "enumeration_capped": capped,
                 })
                 for i, lg in enumerate(legs, start=1):
@@ -403,14 +406,12 @@ class TaxRoutingEngine(Engine):
         equal = {k: 100.0 / len(sets) for k in sets}
         cent = {c: defaultdict(float) for c in codes}
         for (s, p), st in sets.items():
-            for name, routes, wts, binary in (("btwns", st["range"], weights, False), ("strct", st["strict"], weights, False),
-                                              ("occur", st["range"], weights, True), ("unwtd", st["range"], equal, False)):
-                counts: dict[str, int] = defaultdict(int)
-                for rt in routes:
-                    for c in set(rt[1:-1]):
-                        counts[c] += 1
+            for name, counts, total, wts, binary in (("btwns", st["range"], st["n"], weights, False),
+                                                     ("strct", st["strict"], st["n_strict"], weights, False),
+                                                     ("occur", st["range"], st["n"], weights, True),
+                                                     ("unwtd", st["range"], st["n"], equal, False)):
                 for c, n in counts.items():
-                    cent[c][name] += wts[(s, p)] * (1.0 if binary else n / len(routes))
+                    cent[c][name] += wts[(s, p)] * (1.0 if binary else n / total)
         centrality_rows = [{"jurisdiction_id": c, **{k: _r(cent[c][k]) for k in ("btwns", "strct", "occur", "unwtd")}}
                            for c in codes]
 
@@ -578,6 +579,87 @@ class TaxRoutingEngine(Engine):
         raw = {(s, p): world.gdp[s] * world.gdp[p] for s, p in pairs}
         total = math.fsum(raw.values())
         return {k: 100.0 * v / total for k, v in raw.items()}
+
+
+class _Arrays:
+    """Index-based leg costs and, per home jurisdiction, candidate successors sorted by cost plus the admissible
+    bound, so that the near-optimal enumeration stops scanning as soon as no further candidate can fit
+    (release 0.7; same routes and counts as the earlier list-based enumeration, which the regression snapshots
+    and a differential test confirm)."""
+
+    def __init__(self, world: _World, codes: list[str], h: dict[str, dict[str, float]], mu: float):
+        self.codes = codes
+        self.index = {c: i for i, c in enumerate(codes)}
+        self.mu = mu
+        n = len(codes)
+        inf = math.inf
+        self.first = [[inf] * n for _ in range(n)]
+        self.later = [[inf] * n for _ in range(n)]
+        for i, u in enumerate(codes):
+            for j, v in enumerate(codes):
+                if i != j:
+                    self.first[i][j] = world.leg(u, v, True)["cost"]
+                    self.later[i][j] = world.leg(u, v, False)["cost"]
+        self.h = {p: [h[p].get(c, inf) for c in codes] for p in codes}
+        # For every home p and every u: successors v ordered by later cost + penalty + bound (indices only).
+        self.order: dict[str, list[list[int]]] = {}
+        for p in codes:
+            hp = self.h[p]
+            self.order[p] = [sorted((v for v in range(n) if v != u and not math.isinf(self.later[u][v])
+                                     and not math.isinf(hp[v])), key=lambda v, u=u: (self.later[u][v] + hp[v], v))
+                             for u in range(n)]
+
+    def count(self, s: str, p: str, limit: float, limit_strict: float, depth: int, cap: int) -> dict[str, Any]:
+        si, pi = self.index[s], self.index[p]
+        hp = self.h[p]
+        order = self.order[p]
+        n = len(self.codes)
+        first = self.first[si]
+        start = sorted((v for v in range(n) if v != si and not math.isinf(first[v]) and not math.isinf(hp[v])),
+                       key=lambda v: (first[v] + hp[v], v))
+        later, mu = self.later, self.mu
+        out = {"n": 0, "n_strict": 0, "range": defaultdict(int), "strict": defaultdict(int), "capped": False}
+        slack = limit + 2 * TIE_EPS
+        path = [si]
+        on_path = [False] * n
+        on_path[si] = True
+
+        def visit(u: int, g: float, cands: list[int], leg_cost: list[float], pen: float) -> bool:
+            for v in cands:
+                if g + leg_cost[v] + pen + hp[v] > slack:
+                    break
+                if on_path[v]:
+                    continue
+                ng = g + leg_cost[v] + pen
+                if v == pi:
+                    if ng <= limit + TIE_EPS:
+                        out["n"] += 1
+                        strict = ng <= limit_strict
+                        out["n_strict"] += strict
+                        for c in path[1:]:
+                            out["range"][self.codes[c]] += 1
+                            if strict:
+                                out["strict"][self.codes[c]] += 1
+                        if out["n"] >= cap:
+                            out["capped"] = True
+                            return True
+                    continue
+                if len(path) - 1 >= depth:
+                    continue
+                if ng + hp[v] > limit + TIE_EPS:
+                    continue
+                path.append(v)
+                on_path[v] = True
+                stop = visit(v, ng, order[v], later[v], mu)
+                path.pop()
+                on_path[v] = False
+                if stop:
+                    return True
+            return False
+
+        visit(si, 0.0, start, first, 0.0)
+        out["range"], out["strict"] = dict(out["range"]), dict(out["strict"])
+        return out
 
 
 def _r(x: float) -> float:

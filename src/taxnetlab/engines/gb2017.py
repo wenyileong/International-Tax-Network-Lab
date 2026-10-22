@@ -18,6 +18,7 @@ import math
 from collections import defaultdict
 from typing import Any
 
+from taxnetlab import progress
 from taxnetlab.datasets import Dataset
 from taxnetlab.engines.base import (
     OK,
@@ -170,7 +171,10 @@ class ConduitsSinksEngine(Engine):
         best: dict[tuple[str, str, tuple[str, ...]], float] = {}
         paths = 0
         budget_hit = False
-        for start in sorted(revenue):
+        starts = sorted(revenue)
+        for n_start, start in enumerate(starts):
+            if n_start % 50 == 0:
+                progress.report(n_start, len(starts), "ownership chains")
             r0 = revenue[start]
             if r0 <= 0 or start not in where:
                 continue

@@ -49,6 +49,9 @@ class Api:
         self.ws = workspace.ensure()
         self._datasets = _LRU(DATASET_CACHE_SIZE)  # datasets are content-addressed, so caching is safe
         self._previews = _LRU(PREVIEW_CACHE_SIZE)
+        from taxnetlab.jobs import JobManager
+
+        self.jobs = JobManager(self.run)
 
     def _dataset(self, dataset_id: str):
         ds = self._datasets.get(dataset_id)
@@ -113,19 +116,20 @@ class Api:
         did = self.ws.save_dataset(ds)
         return {"dataset_id": did, "name": self.ws.dataset_meta(did)["name"], "validation": ds.validate().to_dict()}
 
-    def import_csv(self, name: str, texts: dict[str, str]) -> dict[str, Any]:
-        ds, report = Dataset.from_csv_texts(name, texts, {"origin": "csv_import"})
+    def import_csv(self, name: str, texts: dict[str, str], mapping: dict[str, dict[str, str]] | None = None) -> dict[str, Any]:
+        meta = {"origin": "csv_import"} | ({"column_mapping": mapping} if mapping else {})
+        ds, report = Dataset.from_csv_texts(name, texts, meta, mapping=mapping)
         if ds is None:
             return {"saved": False, "validation": report.to_dict()}
         did = self.ws.save_dataset(ds)
         return {"saved": True, "dataset_id": did, "name": self.ws.dataset_meta(did)["name"],
                 "validation": report.to_dict()}
 
-    def import_zip(self, name: str, data: bytes) -> dict[str, Any]:
+    def import_zip(self, name: str, data: bytes, mapping: dict[str, dict[str, str]] | None = None) -> dict[str, Any]:
         """Import a coding template or any ZIP of table CSV files (plan s 5.4)."""
         from taxnetlab.coding import read_template_zip
 
-        return self.import_csv(name, read_template_zip(data))
+        return self.import_csv(name, read_template_zip(data), mapping)
 
     @staticmethod
     def template(kind: str, candidates: list[str] | None = None) -> bytes:
@@ -201,6 +205,56 @@ class Api:
 
     def replay(self, run_id: str) -> dict[str, Any]:
         return runs.replay(self.ws, run_id)
+
+    # ------------------------------------------------------------------ expectation register (plan s 7.5)
+    def expectations(self) -> list[dict[str, Any]]:
+        from taxnetlab.expectations import Register
+
+        return Register(self.ws.expectations_dir).list()
+
+    def expectation(self, entry_id: str) -> dict[str, Any]:
+        from taxnetlab.expectations import Register
+
+        return Register(self.ws.expectations_dir).load(entry_id)
+
+    def freeze_expectation(self, draft: dict[str, Any], frozen_by: str) -> dict[str, Any]:
+        from taxnetlab.expectations import Register
+
+        return Register(self.ws.expectations_dir).freeze(draft, frozen_by)
+
+    def check_replication(self, entry_id: str, run_id: str) -> dict[str, Any]:
+        """Compare a stored run with a frozen entry; the report is stored once and never rewritten."""
+        import json
+
+        from taxnetlab.expectations import compare
+
+        path = self.ws.replications_dir / f"{run_id}__{entry_id}.json"
+        record = runs.load_record(self.ws, run_id)
+        entry = self.expectation(entry_id)
+        if path.exists():
+            return json.loads(path.read_text(encoding="utf-8"))
+        outputs = {name: info["rows"] for name, info in self._outputs(run_id).items()}
+        report = compare(entry, record, outputs)
+        if record.get("_integrity") != "ok":
+            report["problems"].append("the run record has been modified")
+            report["verdict"] = "invalid"
+        report["checked_utc"] = runs._utc_now()
+        self.ws.replications_dir.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(".tmp")
+        tmp.write_text(json.dumps(report, indent=2, sort_keys=True, ensure_ascii=False), encoding="utf-8")
+        tmp.replace(path)
+        return report
+
+    def replications(self) -> list[dict[str, Any]]:
+        import json
+
+        if not self.ws.replications_dir.exists():
+            return []
+        out = []
+        for p in sorted(self.ws.replications_dir.glob("*.json")):
+            r = json.loads(p.read_text(encoding="utf-8"))
+            out.append({k: r.get(k) for k in ("run_id", "entry_id", "verdict", "passed", "total", "checked_utc", "data_status")})
+        return out
 
     def _outputs(self, run_id: str) -> dict[str, Any]:
         import csv

@@ -223,6 +223,16 @@ class Handler(BaseHTTPRequestHandler):
                 cands = [c for c in (_q(qs, "jurisdictions") or "").split(",") if c.strip()] or None
                 return self._send(200, api.template(kind, cands), "application/zip",
                                   {"Content-Disposition": f'attachment; filename="taxnetlab_{kind}_template.zip"'})
+            if p == ["expectations"]:
+                return self._json(200, api.expectations())
+            if len(p) == 2 and p[0] == "expectations":
+                return self._json(200, api.expectation(p[1]))
+            if p == ["replications"]:
+                return self._json(200, api.replications())
+            if p == ["jobs"]:
+                return self._json(200, api.jobs.list())
+            if len(p) == 2 and p[0] == "jobs":
+                return self._json(200, api.jobs.get(p[1]))
             if p == ["runs"]:
                 return self._json(200, api.runs())
             if len(p) == 2 and p[0] == "runs":
@@ -245,7 +255,10 @@ class Handler(BaseHTTPRequestHandler):
                 tables = body.get("tables")
                 if not isinstance(tables, dict):
                     raise ValueError("'tables' must map table names to CSV text")
-                return self._json(200, api.import_csv(str(body.get("name") or ""), tables))
+                mapping = body.get("mapping") or None
+                if mapping is not None and not isinstance(mapping, dict):
+                    raise ValueError("'mapping' must map table names to column mappings")
+                return self._json(200, api.import_csv(str(body.get("name") or ""), tables, mapping))
             if p == ["datasets", "import_zip"]:
                 import base64
                 import binascii
@@ -258,6 +271,14 @@ class Handler(BaseHTTPRequestHandler):
                     return self._json(200, api.import_zip(str(body.get("name") or ""), data))
                 except zipfile.BadZipFile:
                     raise ValueError("the file is not a ZIP archive") from None
+            if p == ["expectations"]:
+                return self._json(200, api.freeze_expectation(body.get("entry") or {}, str(body.get("frozen_by") or "")))
+            if p == ["replications"]:
+                return self._json(200, api.check_replication(str(body.get("entry_id") or ""), str(body.get("run_id") or "")))
+            if p == ["jobs"]:
+                return self._json(202, api.jobs.submit(body))
+            if len(p) == 3 and p[0] == "jobs" and p[2] == "cancel":
+                return self._json(200, api.jobs.cancel(p[1]))
             if p == ["runs"]:
                 return self._json(200, api.run(body))
             if len(p) == 3 and p[0] == "engines" and p[2] == "preview":

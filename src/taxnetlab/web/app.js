@@ -1215,7 +1215,7 @@
 
   // ------------------------------------------------------------------ data
   const TABLES = ["sources", "jurisdictions", "jurisdiction_attributes", "entities", "ownership", "illustrative_tax_edges",
-    "tax_domestic", "tax_treaty_dividends", "tax_relief_overrides", "entity_financials", "tax_treaty_conditions"];
+    "tax_domestic", "tax_treaty_dividends", "tax_relief_overrides", "entity_financials", "tax_treaty_conditions", "rule_verifications"];
   PAGES.data = async function (root) {
     header(root, "data.title", "data.lede");
     if (S.dataset) {
@@ -1305,13 +1305,16 @@
   function importForm() {
     const name = el("input", { type: "text", "data-i18n-placeholder": "data.import_name", placeholder: t("data.import_name") });
     const inputs = Object.fromEntries(TABLES.map((tb) => [tb, el("input", { type: "file", accept: ".csv,text/csv" })]));
+    const mapping = el("textarea", { rows: 4, class: "mono", placeholder: '{"ownership": {"holder_id": "Shareholder BvD ID", "source_id": "=ORBIS_2025"}}' });
     const out = el("div");
     const btn = el("button", { class: "btn", i18n: "data.import", onclick: async () => {
       btn.disabled = true; out.replaceChildren();
       try {
         const tables = {};
         for (const [tb, inp] of Object.entries(inputs)) if (inp.files[0]) tables[tb] = await inp.files[0].text();
-        const res = await api("POST", "datasets/import", { name: name.value, tables });
+        let map = null;
+        if (mapping.value.trim()) { try { map = JSON.parse(mapping.value); } catch (e) { toast(t("data.mapping_bad")); return; } }
+        const res = await api("POST", "datasets/import", { name: name.value, tables, mapping: map });
         out.append(el("p", { class: res.saved ? "ok-text" : "err-text", text: res.saved ? t("data.import_ok", { id: res.dataset_id }) : t("data.import_blocked") }), issuesList(res.validation));
         if (res.saved) { await loadDatasets(res.dataset_id); toast(t("data.import_ok", { id: res.dataset_id })); }
       } catch (e) { fail(e); } finally { btn.disabled = false; }
@@ -1319,6 +1322,7 @@
     return el("div", { class: "card" }, [el("h2", { i18n: "data.import_title" }), el("p", { class: "muted small", i18n: "data.import_lede" }),
       el("div", { class: "controls" }, [el("label", { class: "field", style: "flex:1 1 100%" }, [el("span", { i18n: "data.import_name_label" }), name]),
         ...TABLES.map((tb) => el("label", { class: "field" }, [el("span", { text: t("table." + tb) + (["sources", "jurisdictions", "entities", "ownership"].includes(tb) ? " *" : "") }), inputs[tb]]))]),
+      el("details", { style: "margin:10px 0" }, [el("summary", { i18n: "data.mapping" }), el("p", { class: "muted small", i18n: "data.mapping_help" }), mapping]),
       btn, out]);
   }
 
@@ -1361,17 +1365,38 @@
           else if (p.type === "text" || p.type === "date") parameters[k] = inp.value === "" ? null : inp.value;
           else parameters[k] = inp.value;
         }
-        const res = await api("POST", "runs", { engine_id: engineSel.value, dataset_id: S.datasetId, parameters, research_question: question.value });
-        if (!res.executed) { result.replaceChildren(el("div", { class: "card" }, [el("p", { class: "err-text", i18n: "runs.blocked" }), issuesList(res.validation)])); return; }
-        showRun(result, res.record, res.outputs);
-        await refreshHistory();
+        // Background job (plan s 11): progress and cancellation; the run record is written only on completion.
+        const job = await api("POST", "jobs", { engine_id: engineSel.value, dataset_id: S.datasetId, parameters, research_question: question.value });
+        const bar = el("progress", { max: 1, value: 0, class: "progress" }), msg = el("span", { class: "muted small" });
+        const cancel = el("button", { class: "btn btn-ghost", i18n: "runs.cancel", onclick: () => api("POST", `jobs/${job.job_id}/cancel`, {}).catch(fail) });
+        result.replaceChildren(el("div", { class: "card" }, [el("p", { i18n: "runs.running" }), el("div", { class: "btn-row" }, [bar, msg, cancel])]));
+        applyI18n(result);
+        let state = job;
+        while (state.state === "queued" || state.state === "running") {
+          await new Promise((r) => setTimeout(r, 300));
+          state = await api("GET", "jobs/" + job.job_id);
+          bar.value = state.progress; msg.textContent = `${Math.round(state.progress * 100)}% ${state.message || ""}`;
+        }
+        if (state.state === "done") {
+          const rr = await api("GET", "runs/" + state.run_id);
+          showRun(result, rr.record, rr.outputs);
+          await refreshHistory();
+        } else if (state.state === "blocked") {
+          result.replaceChildren(el("div", { class: "card" }, [el("p", { class: "err-text", i18n: "runs.blocked" }), issuesList(state.validation)]));
+        } else if (state.state === "cancelled") {
+          result.replaceChildren(el("div", { class: "card" }, [el("p", { class: "muted", i18n: "runs.cancelled" })]));
+        } else {
+          result.replaceChildren(el("div", { class: "card" }, [el("p", { class: "err-text", text: t("msg.error", { message: state.error || state.state }) })]));
+        }
+        applyI18n(result);
       } catch (e) { fail(e); } finally { btn.disabled = false; }
     } });
     root.append(el("div", { class: "card" }, [
       el("div", { class: "controls" }, [el("label", { class: "field" }, [el("span", { i18n: "runs.engine" }), engineSel])]),
       paramBox, el("label", { class: "field" }, [el("span", { i18n: "runs.question" }), question]), el("div", { class: "spacer" }), btn,
       el("p", { class: "muted small", i18n: "runs.interface_note" })]));
-    root.append(el("div", { class: "spacer" }), result, el("div", { class: "spacer" }), el("div", { class: "card" }, [el("h2", { i18n: "runs.history" }), history]));
+    root.append(el("div", { class: "spacer" }), result, el("div", { class: "spacer" }), el("div", { class: "card" }, [el("h2", { i18n: "runs.history" }), history]),
+      el("div", { class: "spacer" }), expectationCard());
     async function refreshHistory() {
       const list = await api("GET", "runs");
       if (!list.length) { history.replaceChildren(el("p", { class: "empty", i18n: "runs.none" })); return; }
@@ -1382,6 +1407,54 @@
     }
     await refreshHistory();
   };
+
+  // Expectation register (plan s 7.5): list frozen entries; freeze a draft JSON file.
+  function expectationCard() {
+    const list = el("div"), who = el("input", { type: "text", "data-i18n-placeholder": "rep.frozen_by_ph", placeholder: t("rep.frozen_by_ph") });
+    const file = el("input", { type: "file", accept: ".json,application/json" });
+    const refresh = async () => {
+      const rows = await api("GET", "expectations");
+      list.replaceChildren(rows.length ? renderTable(["entry_id", "title", "engine_id", "state", "frozen_utc", "frozen_by", "supersedes", "superseded"], rows)
+        : el("p", { class: "empty", i18n: "rep.none" }));
+      applyI18n(list);
+    };
+    const btn = el("button", { class: "btn", i18n: "rep.freeze", onclick: async () => {
+      if (!file.files[0] || !who.value.trim()) { toast(t("rep.need_file_and_name")); return; }
+      try {
+        const entry = JSON.parse(await file.files[0].text());
+        const r = await api("POST", "expectations", { entry, frozen_by: who.value });
+        toast(t("rep.frozen", { id: r.entry_id })); await refresh();
+      } catch (e) { fail(e); }
+    } });
+    refresh().catch(fail);
+    return el("div", { class: "card" }, [el("h2", { i18n: "rep.title" }), el("p", { class: "muted small", i18n: "rep.lede" }), list,
+      el("div", { class: "controls", style: "margin-top:10px" }, [el("label", { class: "field" }, [el("span", { i18n: "rep.file" }), file]),
+        el("label", { class: "field" }, [el("span", { i18n: "rep.frozen_by" }), who]), btn])]);
+  }
+
+  // Replication check against a frozen expectation (plan s 7.5).
+  function replicationBox(rec) {
+    const box = el("div", { class: "btn-row", style: "margin:8px 0" });
+    api("GET", "expectations").then((list) => {
+      const usable = list.filter((e) => e.state === "frozen" && e.engine_id === rec.engine.engine_id && !e.superseded);
+      if (!usable.length) return;
+      const sel = el("select", { class: "select" }, usable.map((e) => el("option", { value: e.entry_id, text: `${e.entry_id} · ${e.title}` })));
+      const out = el("div", { class: "small", style: "flex-basis:100%" });
+      box.append(el("span", { class: "small muted", i18n: "rep.check_against" }), sel, el("button", { class: "btn btn-ghost", i18n: "rep.check", onclick: async () => {
+        try {
+          const r = await api("POST", "replications", { entry_id: sel.value, run_id: rec.run_id });
+          out.replaceChildren(el("p", {}, [el("strong", { text: t("rep.verdict." + r.verdict) }), `  ${r.passed} / ${r.total}`]),
+            r.problems.length ? el("ul", {}, r.problems.map((x) => el("li", { class: "err-text", text: x }))) : "",
+            r.note ? el("p", { class: "muted", text: r.note }) : "",
+            renderTable(["label", "pass", "statistic", "observed", "missing", "unexpected"], r.comparisons.map((c) => Object.assign({}, c, {
+              observed: Array.isArray(c.observed) ? c.observed.join(", ") : c.observed, missing: (c.missing || []).join(", "), unexpected: (c.unexpected || []).join(", ") }))));
+          applyI18n(out);
+        } catch (e) { fail(e); }
+      } }), out);
+      applyI18n(box);
+    }).catch(() => {});
+    return box;
+  }
 
   function showRun(box, rec, outputs) {
     const replayOut = el("span", { class: "small" });
@@ -1397,7 +1470,7 @@
             catch (e) { fail(e); }
           } }),
           el("a", { class: "btn btn-ghost", href: `/api/runs/${rec.run_id}/record.json`, i18n: "runs.download_record" })])]),
-      replayOut,
+      replayOut, replicationBox(rec),
       el("p", { class: "small" }, [el("span", { class: "badge", style: "--c:" + (STATUS_COLOURS[rec.engine.status] || "#64748b"), text: t("status." + rec.engine.status) }), "  ",
         t("track." + rec.engine.track), "  ·  ", t("runs.outcome") + ": ", el("strong", { text: t("outcome." + rec.outcome) }), "  ·  ", rec.dataset.name, " (", t("status." + rec.dataset.data_status), ")"]),
       el("p", { class: "muted small", text: rec.engine.boundary }),

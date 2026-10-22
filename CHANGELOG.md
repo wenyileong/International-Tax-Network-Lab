@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.7.0 (22 October 2026)
+
+See `docs/BUILD_0_7_STATUS.md`.
+
+* Expectation register (freeze, supersede, check) and stored replication reports; draft entry for Garcia-Bernardo and others (2017).
+* Verification log for legal rows (`rule_verifications`); ISO 3166-1 alpha-3 registry.
+* Column mapping for imports of database exports.
+* Background runs with progress and cancellation (Runs page, `/api/jobs`).
+* Tax routing about six times faster (108 jurisdictions in about 6 s); reference benchmarks and performance budgets.
+
 ## 0.6.0 (22 October 2026)
 
 Plan v2.5. See `docs/BUILD_0_6_STATUS.md`.

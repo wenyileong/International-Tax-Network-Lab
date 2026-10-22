@@ -16,6 +16,7 @@ import json
 import math
 from typing import Any
 
+from taxnetlab import progress
 from taxnetlab.datasets import Dataset
 from taxnetlab.engines.base import INVALID_INPUT, OK, ORIGINAL, Engine, EngineResult, EngineSpec, Parameter
 from taxnetlab.engines.upstream import UpstreamError, run_upstream
@@ -98,6 +99,7 @@ class ModelComparisonEngine(Engine):
             if eid == "ph.vietoris_rips" and not params["include_topology"]:
                 continue
             for label, extra in readings:
+                progress.report(len(engine_rows), sum(len(r) for r in READINGS.values()), f"{eid}: {label}")
                 upstream = {"period": params["period"], **extra}
                 try:
                     out, prov = run_upstream(dataset, eid, upstream, "the comparison")
