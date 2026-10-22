@@ -1,7 +1,7 @@
 # International Tax Network Lab
 ## Project Plan and Technical Roadmap
 
-**Document version:** 2.2 (supersedes 2.1, 2.0 and 1.0)
+**Document version:** 2.3 (supersedes 2.2, 2.1, 2.0 and 1.0)
 **Project baseline:** Build 0.1
 **Date:** 22 October 2026
 **Target:** a full research software product (release 1.0), delivered as a Windows executable (`.exe`), developed through verifiable intermediate releases.
@@ -9,6 +9,13 @@
 ---
 
 ## 0. Revision history
+
+### 0.00 Changes in version 2.3 (release 0.4)
+
+1. **Conduits and sinks specified and implemented.** `docs/specs/gb2017_conduits_sinks.md` (v0.1, draft) from the open-access article; engine `gb2017.conduits_sinks` at `implemented` (s 9.1).
+2. **IP gate research completed; decision open.** `docs/IP_GATE_US10417262.md` records the claim structure (23 claims; independent claims 1, 12 and 23 recite lens, metric and resolution selection, mapping by matrix-vector multiplication, cover, clustering and a node-and-edge visualisation). The plan's earlier assumption that a generic Mapper baseline lies outside the patent is not safe. The TDA engine stays at `interface` and out of the executable until the author records a decision (s 9.3).
+3. **Reading modes delivered** (s 8): Plain English and Technical, with chart guidance in both registers.
+4. **New data table:** `entity_financials` (operating revenue per entity and period), introduced with the generation-2 hashing rule so that existing dataset ids are unchanged.
 
 ### 0.0 Changes in version 2.2
 
@@ -363,6 +370,8 @@ Pages: Workspace, Data manager (including coding templates), Network explorer, T
 - Value is described as moving *towards* sinks, so the engine consumes `value_flow_view`, not `ownership_view`.
 - The CORPNET group publishes results online (ofcmeter.org). Whether published jurisdiction-level results, code or a data availability statement can serve as a replication target must be checked.
 
+**Specification (2.3):** `docs/specs/gb2017_conduits_sinks.md` v0.1 (draft): Orbis November 2015 vintage; chains extended while multiplicative ownership is at least 0.001, cycles discarded; chain value = revenue of the owned firm times multiplicative ownership; country chains with adjacent repeats merged; sink centrality on two-country chains and conduit centralities on three-country chains, each relative to GDP share; thresholds 10 (sink) and 1 (conduit). The GDP terms and conduit denominators are reconstructions pending the author's check.
+
 **Reconstruction tasks:** exact version; chain construction and direction; length and inclusion rules; multiple owners; value allocation and double counting; exact measures with numerators, denominators and normalisation; classification thresholds; coverage and period; the Orbis vintage and extraction rules used.
 
 **Fixtures:** hand-worked chains and weights; disconnected components; cycles (cross-holding); parallel relations (two share classes between the same pair); missing ownership values; missing or zero denominators; a fixture where ownership and value-flow direction give visibly different answers; identity tests on value allocation.
@@ -395,6 +404,8 @@ Pages: Workspace, Data manager (including coding templates), Network explorer, T
 5. record the decision: (a) include the baseline in the executable; (b) include the baseline but keep patent-specific procedures in a separate, non-distributed research module; or (c) rely on an existing open-source Mapper library as an optional dependency excluded from the executable.
 
 The claim chart and assessment are research documents, not a freedom-to-operate opinion.
+
+**Status (2.3):** research completed in `docs/IP_GATE_US10417262.md`; the decision is the author's and is recorded in that document. Until then the TDA engine stays at `interface`.
 
 **Remaining tasks:** specification of preprocessing, lens, metric, cover, overlap, clustering and graph construction; membership preservation; benchmarks; against a declared FeatureMatrix.
 
@@ -434,7 +445,8 @@ The table in 10.2 is kept for reference. From 0.3 the order is:
 | Release | Content | Exit gate |
 |---|---|---|
 | 0.3 | **Tax routing, method first.** Phase 3 for van 't Riet and Lejour (specification, feasibility); the tax-rule tables needed by the reproduction variant (domestic rates and relief method, directional treaty withholding, directional relief overrides); the reference engine; live route explorer with scenario overrides and pinning. | Engine at `implemented` with every hand-calculated fixture, a brute-force differential test and property tests passing; promotion to `verified` once the author has checked the specification against the source. |
-| 0.4 | Phase 3 for Garcia-Bernardo and others and for the patent (IP gate); conduit and sink engine if feasible; reading modes. | As 10.2, Phases 3 and 4. |
+| 0.4 | Phase 3 for Garcia-Bernardo and others and for the patent (IP gate); conduit and sink engine; reading modes. **Delivered** (engine at `implemented`; IP decision open). | As 10.2, Phases 3 and 4. |
+| 0.5 | Author checks of both draft specifications and promotion to `verified`; IP decision; remaining Phase 5 rule layer (eligibility, coding template); model comparison page. | Both engines `verified`; IP decision recorded. |
 | 0.5 onwards | As 10.2, Phases 5 (remaining rule layer: eligibility, coding template), 6 to 9. | As 10.2. |
 
 **Why this order.** Contracts and the first executable (Phase 1) come before engines so that three engines do not produce three designs and packaging problems surface early, not at 1.0. Specification and feasibility for all three methods (Phase 3) precede engine work because data licensing or the patent may change which engine is worth building first. Replication sits with real data (Phase 7), so earlier gates require only `verified`.
@@ -488,7 +500,8 @@ Unsigned PyInstaller executables commonly trigger Windows SmartScreen warnings a
 
 ## 13. Immediate next actions
 
-1. Author check of `docs/specs/vtrl2018_tax_routing.md` against CPB Discussion Paper 349 (pp 7 to 10 and 13 to 18) and the journal version; resolve the open questions; promote the engine to `verified` if the fixtures still pass.
+1. Author checks of `docs/specs/vtrl2018_tax_routing.md` (CPB Discussion Paper 349, pp 7 to 10 and 13 to 18, and the journal version) and `docs/specs/gb2017_conduits_sinks.md` (Methods, Eqs 1 to 5); resolve the open questions; promote each engine to `verified` if its fixtures still pass.
+1a. Author's decision on the IP gate (`docs/IP_GATE_US10417262.md` s 5), after checking the patent's maintenance-fee record.
 2. Choose the licence (s 4.6); create the `v0.1.0` and `v0.3.0` tags (tag pushes are not available from the build session).
 3. Physical Windows smoke test of the CI-built executable (s 11.1).
 4. Phase 3 for the Garcia-Bernardo method and the patent IP gate (0.4).

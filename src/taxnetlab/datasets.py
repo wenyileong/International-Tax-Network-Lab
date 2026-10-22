@@ -254,6 +254,23 @@ class Dataset:
         for n, row in enumerate(t["tax_relief_overrides"], start=1):
             check_rule_row("tax_relief_overrides", n, row, ("relieving_jurisdiction", "taxing_jurisdiction"))
 
+        for n, f in enumerate(t["entity_financials"], start=1):
+            e = entities.get(f["entity_id"])
+            if e is None:
+                r.error("unknown_entity", f"entity '{f['entity_id']}' is not in the entities table",
+                        table="entity_financials", row=n, column="entity_id", params={"id": f["entity_id"]})
+            elif (is_synthetic_source(f["source_id"]) and e["jurisdiction_id"] in jurisdictions
+                  and not jurisdictions[e["jurisdiction_id"]]["fictional"]):
+                r.error("synthetic_on_real_jurisdiction", "synthetic revenue attributed to an entity in a real jurisdiction",
+                        table="entity_financials", row=n, params={"id": e["jurisdiction_id"]})
+            if not CURRENCY_RE.match(f["currency"]):
+                r.error("bad_currency", f"currency '{f['currency']}' must be an ISO 4217 code",
+                        table="entity_financials", row=n, params={"currency": f["currency"]})
+            if f["consolidation"] == "consolidated":
+                r.warning("consolidated_revenue", "consolidated revenue double counts subsidiaries; deconsolidate first",
+                          table="entity_financials", row=n, params={"id": f["entity_id"]})
+            check_source("entity_financials", n, f["source_id"])
+
         if not t["entities"]:
             r.warning("empty_table", "no entities", table="entities", params={"table": "entities"})
         status = self.data_status

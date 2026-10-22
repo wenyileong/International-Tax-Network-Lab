@@ -64,12 +64,14 @@ def generate(
          "fictional": True, "parent_jurisdiction_id": None}
         for c in codes
     ]
-    # One "hub-like" jurisdiction is chosen so that worlds have visible structure to explore.
+    # A "hub-like" jurisdiction (intermediate holdings) and a small "sink-like" jurisdiction (where many
+    # groups are ultimately owned) give synthetic worlds visible structure to explore. Both are fictional.
     hub = rng.choice(codes)
+    sink = rng.choice([c for c in codes if c != hub])
     attributes = [
         {"jurisdiction_id": f"FIC_{c}", "attribute": "gdp", "period": "2025",
-         "value": float(rng.randrange(20, 900) * 1000), "unit": "million", "currency": "XTS",
-         "source_id": SYNTHETIC_SOURCE["source_id"]}
+         "value": float((rng.randrange(5, 15) if c == sink else rng.randrange(20, 900)) * 1000), "unit": "million",
+         "currency": "XTS", "source_id": SYNTHETIC_SOURCE["source_id"]}
         for c in codes
     ]
 
@@ -88,7 +90,7 @@ def generate(
         })
 
     for g in range(1, params["n_groups"] + 1):
-        home = rng.choice(codes)
+        home = sink if rng.random() < 0.4 else rng.choice(codes)
         members: list[str] = []
         for k in range(params["entities_per_group"]):
             if k == 0:
@@ -141,10 +143,15 @@ def generate(
                 })
 
     domestic, treaties = _synthetic_tax_rules(rng, codes, hub)
+    revenue_range = {"parent": (10, 200), "holding": (0, 5), "finance": (1, 20), "operating": (20, 400)}
+    financials = [{"entity_id": e["entity_id"], "period": TAX_PERIOD,
+                   "operating_revenue": round(rng.uniform(*revenue_range[e["entity_type"]]), 2), "currency": "XTS",
+                   "consolidation": "unconsolidated", "source_id": SYNTHETIC_SOURCE["source_id"]} for e in entities]
 
     tables = {"sources": [dict(SYNTHETIC_SOURCE)], "jurisdictions": jurisdictions,
               "jurisdiction_attributes": attributes, "entities": entities, "ownership": ownership,
-              "illustrative_tax_edges": tax_edges, "tax_domestic": domestic, "tax_treaty_dividends": treaties}
+              "illustrative_tax_edges": tax_edges, "tax_domestic": domestic, "tax_treaty_dividends": treaties,
+              "entity_financials": financials}
     label = name or f"Synthetic world (seed {params['seed']})"
     dataset, report = Dataset.from_rows(label, tables, {"origin": "synthetic_generator", "generator": params})
     if dataset is None:  # a generator bug, not a user error

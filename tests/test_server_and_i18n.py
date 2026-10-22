@@ -123,7 +123,7 @@ def test_every_static_key_used_in_interface_exists():
 FAMILY_PREFIXES = ("status.", "outcome.", "table.", "rule.", "view.", "track.", "col.", "dir.", "level.", "banner.",
                    "gen.", "integrity.", "network.colour.", "overview.band.", "entity_type.", "issue.", "choice.",
                    "param.", "output.", "measure.demo.", "relief.", "routes.basis.", "routes.c.", "routes.ov.", "routes.wa.",
-                   "routes.w.", "routes.part.", "routes.k.", "routes.")
+                   "routes.w.", "routes.part.", "routes.k.", "routes.", "guide.", "conduits.", "mode.")
 
 
 def test_dynamic_key_families_complete():
@@ -207,3 +207,20 @@ def test_invalid_json_is_400(server):
     status, data = request(server, "POST", "/api/runs", b"{not json", {TOKEN_HEADER: server.token,
                                                                        "Content-Type": "application/json"})
     assert status == 400 and json.loads(data)["error"]["code"] == "bad_request"
+
+
+
+def test_every_chart_guide_has_both_reading_modes():
+    strings = _strings()
+    js = (WEB / "app.js").read_text(encoding="utf-8")
+    ids = set(re.findall(r'guide\("([a-z_.]+)"\)', js))
+    assert len(ids) >= 10
+    missing = [f"guide.{i}.{m}" for i in ids for m in ("plain", "tech") if f"guide.{i}.{m}" not in strings]
+    assert not missing, missing
+
+
+def test_mode_variants_have_a_base_key():
+    strings = _strings()
+    orphans = [k for k in strings if k.endswith((".plain", ".tech")) and not k.startswith("guide.")
+               and k.rsplit(".", 1)[0] not in strings]
+    assert not orphans, orphans

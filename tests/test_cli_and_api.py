@@ -45,3 +45,9 @@ def test_default_dataset_only_once(workspace):
     assert api.ensure_default_dataset() is not None
     assert api.ensure_default_dataset() is None
     assert len(api.datasets()) == 1
+
+
+def test_selftest_passes(capsys):
+    """The end-to-end self-test run by CI on the executable must also pass from source."""
+    assert main(["selftest"]) == 0
+    assert "Self-test passed." in capsys.readouterr().out

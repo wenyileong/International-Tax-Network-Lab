@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.0 (22 October 2026)
+
+Plan v2.3. See `docs/BUILD_0_4_STATUS.md`.
+
+* Phase 3 specification for Garcia-Bernardo and others (`docs/specs/gb2017_conduits_sinks.md`, draft).
+* Conduits and sinks engine (`gb2017.conduits_sinks`, implemented) and a live Conduits and sinks page.
+* IP gate research note for US Patent 10,417,262 (`docs/IP_GATE_US10417262.md`); decision open; TDA stays out of the executable.
+* Plain English and Technical reading modes with chart guidance.
+* New `entity_financials` table. Existing dataset ids unchanged; synthetic datasets for a given seed differ from 0.3.
+
 ## 0.3.0 (22 October 2026)
 
 Plan v2.2: tax routing, method first. See `docs/BUILD_0_3_STATUS.md`.

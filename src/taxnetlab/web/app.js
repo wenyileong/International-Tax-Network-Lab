@@ -14,16 +14,27 @@
   const SCALE = RAMP.map((c, i) => [i / (RAMP.length - 1), c]);
   const STATUS_COLOURS = { interface: "#94a3b8", specified: "#0ea5e9", implemented: "#6366f1", verified: "#059669",
     replicated: "#16a34a", replicated_with_discrepancies: "#ca8a04", robust: "#0d9488", empirically_tested: "#15803d" };
-  const S = { strings: {}, locale: "en-GB", locales: [], datasets: [], datasetId: null, dataset: null, engines: [],
+  const S = { mode: "plain", strings: {}, locale: "en-GB", locales: [], datasets: [], datasetId: null, dataset: null, engines: [],
     page: "overview", jurColour: {} };
 
   // ------------------------------------------------------------------ i18n
   function t(key, params) {
-    let s = Object.prototype.hasOwnProperty.call(S.strings, key) ? S.strings[key] : key;
+    // Reading modes (plan s 8): a key may have a ".plain" or ".tech" variant that takes precedence in that mode.
+    const variant = key + (S.mode === "technical" ? ".tech" : ".plain");
+    let s = has(variant) ? S.strings[variant] : has(key) ? S.strings[key] : key;
     if (params) s = s.replace(/\{(\w+)\}/g, (m, k) => (params[k] === undefined || params[k] === null ? m : String(params[k])));
     return s;
   }
-  function tOr(key, fallback, params) { return Object.prototype.hasOwnProperty.call(S.strings, key) ? t(key, params) : fallback; }
+  function has(key) { return Object.prototype.hasOwnProperty.call(S.strings, key); }
+  function tOr(key, fallback, params) { return has(key) || has(key + ".plain") || has(key + ".tech") ? t(key, params) : fallback; }
+  // Chart guidance: open in Plain English mode, folded away in Technical mode.
+  function guide(id) {
+    const plain = S.mode !== "technical";
+    const box = el("details", { class: "guide" + (plain ? " plain" : ""), open: plain }, [
+      el("summary", { i18n: plain ? "guide.summary.plain" : "guide.summary.tech" }),
+      el("p", { "data-i18n": "guide." + id, text: t("guide." + id) })]);
+    return box;
+  }
   function fmt(n, digits) {
     if (n === null || n === undefined || n === "") return "";
     const x = Number(n);
@@ -217,8 +228,8 @@
     const jurs = d.jurisdictions;
     const p1 = el("div", { class: "plot" }), p2 = el("div", { class: "plot" });
     root.append(el("div", { class: "grid grid-2" }, [
-      el("div", { class: "card" }, [el("h2", { i18n: "overview.chart.entities" }), p1]),
-      el("div", { class: "card" }, [el("h2", { i18n: "overview.chart.fractions" }), p2]),
+      el("div", { class: "card" }, [el("h2", { i18n: "overview.chart.entities" }), guide("overview.entities"), p1]),
+      el("div", { class: "card" }, [el("h2", { i18n: "overview.chart.fractions" }), guide("overview.fractions"), p2]),
     ]));
     plot(p1, types.map((ty, k) => ({ type: "bar", name: tOr("entity_type." + ty, ty), x: jurs, y: jurs.map((j) => (byJur[j] || {})[ty] || 0),
       marker: { color: PALETTE[k % PALETTE.length] }, hovertemplate: "%{x}<br>%{fullData.name}: %{y}<extra></extra>" })),
@@ -258,7 +269,7 @@
     const note = el("p", { class: "legend-note" });
     const panel = el("div", { class: "side-panel" }, [el("p", { class: "muted", i18n: "network.click_hint" })]);
     root.append(el("div", { class: "grid", style: "grid-template-columns: minmax(0,3fr) minmax(240px,1fr)" }, [
-      el("div", { class: "card" }, [plotNode, note]), el("div", { class: "card" }, [el("h2", { i18n: "network.details" }), panel])]));
+      el("div", { class: "card" }, [guide("network.graph"), plotNode, note]), el("div", { class: "card" }, [el("h2", { i18n: "network.details" }), panel])]));
 
     async function draw() {
       st.view = viewSel.value; st.colour = colourSel.value; st.rule = ruleSel.value; st.as_of = asOf.value; st.domestic = dom.checked;
@@ -380,7 +391,7 @@
     const note = el("p", { class: "legend-note" });
     root.append(el("div", { class: "controls" }, [el("label", { class: "field" }, [el("span", { i18n: "network.rule" }), ruleSel]),
       el("label", { class: "field inline" }, [dom, el("span", { i18n: "network.include_domestic" })])]),
-    el("div", { class: "card" }, [plotNode, note]));
+    el("div", { class: "card" }, [guide("matrix.heatmap"), plotNode, note]));
     async function draw() {
       store("matrix.rule", ruleSel.value);
       const m = await api("GET", `datasets/${S.datasetId}/matrix?rule=${ruleSel.value}&include_domestic=${dom.checked}`);
@@ -488,11 +499,11 @@
       el("button", { class: "btn btn-ghost", i18n: "routes.sweep_wht", onclick: () => sweep("wht") }),
       el("button", { class: "btn btn-ghost", i18n: "routes.sweep_treaty", onclick: () => sweep("treaty") })]);
     root.append(el("div", { class: "live-grid" }, [controls, el("div", { class: "grid" }, [
-      el("div", { class: "card" }, [headline, mapNode, el("p", { class: "legend-note", i18n: "routes.map_note" })]),
-      el("div", { class: "grid grid-2" }, [el("div", { class: "card" }, [el("h2", { i18n: "routes.decomposition" }), barNode]),
+      el("div", { class: "card" }, [headline, guide("routes.map"), mapNode, el("p", { class: "legend-note", i18n: "routes.map_note" })]),
+      el("div", { class: "grid grid-2" }, [el("div", { class: "card" }, [el("h2", { i18n: "routes.decomposition" }), guide("routes.decomposition"), barNode]),
         el("div", { class: "card" }, [el("h2", { i18n: "routes.legs" }), legsBox])]),
-      el("div", { class: "grid grid-2" }, [el("div", { class: "card" }, [el("h2", { i18n: "routes.shop_matrix" }), heatNode]),
-        el("div", { class: "card" }, [el("h2", { i18n: "routes.centrality" }), centNode])]),
+      el("div", { class: "grid grid-2" }, [el("div", { class: "card" }, [el("h2", { i18n: "routes.shop_matrix" }), guide("routes.shop"), heatNode]),
+        el("div", { class: "card" }, [el("h2", { i18n: "routes.centrality" }), guide("routes.centrality"), centNode])]),
       el("div", { class: "card" }, [el("h2", { i18n: "routes.sweep" }), el("p", { class: "muted small", i18n: "routes.sweep_note" }), sweepBtns, sweepNode]),
     ])]));
 
@@ -678,6 +689,141 @@
     }
     function kpi(label, value, colour) { return el("div", { class: "card kpi", style: "--c:" + colour }, [el("div", { class: "value", text: value }), el("div", { class: "label", text: label })]); }
     syncControls();
+    await compute();
+  };
+
+  // ------------------------------------------------------------------ conduits and sinks (live explorer)
+  const GB_ENGINE = "gb2017.conduits_sinks";
+  PAGES.conduits = async function (root) {
+    header(root, "conduits.title", "conduits.lede");
+    if (needDataset(root)) return;
+    const eng = S.engines.find((e) => e.engine_id === GB_ENGINE);
+    const fin = (await api("GET", `datasets/${S.datasetId}/tables/entity_financials`)).rows;
+    if (!eng || !fin.length) {
+      root.append(el("div", { class: "card empty" }, [el("p", { i18n: "conduits.no_revenue" }), el("a", { href: "#/data", i18n: "nav.data" })]));
+      return;
+    }
+    const d = Object.fromEntries(eng.parameters.map((p) => [p.name, p.default]));
+    const saved = (() => { try { return JSON.parse(recall("conduits." + S.datasetId) || "null"); } catch (e) { return null; } })();
+    const C = Object.assign({ logThreshold: Math.log10(d.ownership_threshold), normalise: d.normalise_missing_shareholders,
+      sink: d.sink_threshold, conduit: d.conduit_threshold, denominator: d.conduit_denominator }, saved || {});
+    const slider = (min, max, step, value) => { const x = el("input", { type: "range", min, max, step, class: "slider" }); x.value = value; return x; };
+    const ownS = slider(-5, -1, 0.25, C.logThreshold), sinkS = slider(0, 50, 0.5, C.sink), condS = slider(0, 10, 0.1, C.conduit);
+    const ownV = el("output", { class: "mono" }), sinkV = el("output", { class: "mono" }), condV = el("output", { class: "mono" });
+    const norm = el("input", { type: "checkbox", checked: !!C.normalise });
+    const denom = el("select", { class: "select" }, ["subset_total", "all_g3"].map((v) => el("option", { value: v, text: t("choice." + v) })));
+    denom.value = C.denominator;
+    const status = el("p", { class: "muted small", style: "min-height:1.4em" });
+    const question = el("textarea", { rows: 2, "data-i18n-placeholder": "runs.question_ph", placeholder: t("runs.question_ph") });
+    const pinBtn = el("button", { class: "btn", i18n: "routes.pin", onclick: pin });
+    const field = (key, ...kids) => el("label", { class: "field" }, [el("span", { i18n: key }), ...kids]);
+    const row = (...kids) => el("div", { class: "slider-row" }, kids);
+    root.append(el("div", { class: "live-grid" }, [
+      el("div", { class: "card live-panel" }, [
+        el("h2", { i18n: "conduits.settings" }),
+        field("param.ownership_threshold", row(ownS, ownV)),
+        el("label", { class: "field inline" }, [norm, el("span", { i18n: "param.normalise_missing_shareholders" })]),
+        field("param.sink_threshold", row(sinkS, sinkV)), field("param.conduit_threshold", row(condS, condV)),
+        field("param.conduit_denominator", denom),
+        el("div", { class: "spacer" }), status, el("p", { class: "muted small", i18n: "routes.exploratory_note" }), question,
+        el("div", { style: "height:8px" }), pinBtn]),
+      el("div", { class: "grid" }, [
+        el("div", { class: "card" }, [el("div", { class: "headline", id: "gb-head" }), guide("conduits.scatter"), el("div", { class: "plot tall", id: "gb-scatter" })]),
+        el("div", { class: "grid grid-2" }, [
+          el("div", { class: "card" }, [el("h2", { i18n: "conduits.sink_chart" }), guide("conduits.sink"), el("div", { class: "plot", id: "gb-sink" })]),
+          el("div", { class: "card" }, [el("h2", { i18n: "conduits.flow_chart" }), guide("conduits.sankey"), el("div", { class: "plot", id: "gb-sankey" })])]),
+        el("div", { class: "card" }, [el("h2", { i18n: "conduits.table" }), el("div", { id: "gb-table" })]),
+      ])]));
+    let seq = 0, timer = null;
+    const params = () => ({ ownership_threshold: Math.pow(10, Number(ownS.value)), normalise_missing_shareholders: norm.checked,
+      sink_threshold: Number(sinkS.value), conduit_threshold: Number(condS.value), conduit_denominator: denom.value });
+    function sync() {
+      ownV.textContent = fmt(Math.pow(10, Number(ownS.value)), 5); sinkV.textContent = fmt(Number(sinkS.value), 1); condV.textContent = fmt(Number(condS.value), 1);
+      store("conduits." + S.datasetId, JSON.stringify({ logThreshold: Number(ownS.value), normalise: norm.checked, sink: Number(sinkS.value),
+        conduit: Number(condS.value), denominator: denom.value }));
+    }
+    function changed(now) { sync(); clearTimeout(timer); timer = setTimeout(compute, now ? 0 : 160); }
+    [ownS, sinkS, condS].forEach((x) => x.addEventListener("input", () => changed()));
+    [norm, denom].forEach((x) => x.addEventListener("change", () => changed(true)));
+    async function compute() {
+      const my = ++seq;
+      status.textContent = t("routes.computing");
+      try {
+        const res = await api("POST", `engines/${GB_ENGINE}/preview`, { dataset_id: S.datasetId, parameters: params() });
+        if (my !== seq) return;
+        if (!res.executed) { status.replaceChildren(el("span", { class: "err-text", i18n: "runs.blocked" })); document.getElementById("gb-table").replaceChildren(issuesList(res.validation)); return; }
+        status.textContent = t("routes.status", { ms: res.cached ? t("routes.cached") : fmt(res.elapsed_ms, 0) + " ms", status: t("status." + res.status) })
+          + (res.warnings.length ? "  ·  " + res.warnings.join(" ") : "");
+        draw(res);
+      } catch (e) { if (my === seq) fail(e); }
+    }
+    function draw(res) {
+      const rows = res.outputs.jurisdictions, marks = watermark([t("wm.exploratory"), res.status !== "verified" ? t("wm.unverified") : null, statusWatermark()]);
+      const sum = Object.fromEntries(res.outputs.summary.map((r) => [r.measure, r.value]));
+      const sinks = rows.filter((r) => r.is_sink).map((r) => r.jurisdiction_id), conduits = rows.filter((r) => r.is_conduit).map((r) => r.jurisdiction_id);
+      document.getElementById("gb-head").replaceChildren(el("div", { class: "kpis" }, [
+        kpiBox(t("conduits.k.sinks"), sinks.join(", ") || t("conduits.none"), "#ef4444"),
+        kpiBox(t("conduits.k.conduits"), conduits.join(", ") || t("conduits.none"), "#8b5cf6"),
+        kpiBox(t("conduits.k.chains"), `${fmt(sum.g2_chains, 0)} · ${fmt(sum.g3_chains, 0)}`, "#14b8a6"),
+        kpiBox(t("conduits.k.paths"), fmt(sum.firm_paths_kept, 0), "#f59e0b")]));
+      // conduit map: outward (x) against inward (y), log axes, threshold quadrant
+      const floor = 0.01, thr = Number(condS.value) || floor;
+      const pos = (v) => (v === null || v === undefined || v <= floor ? floor : v);
+      const sc = rows.map((r) => r.sink_centrality ?? 0), smax = Math.max(1, ...sc.map(Math.abs));
+      const gmax = Math.max(1, ...rows.map((r) => r.gdp || 0));
+      const ymax = Math.max(thr * 10, ...rows.map((r) => pos(r.conduit_in))) * 1.6, xmax = Math.max(thr * 10, ...rows.map((r) => pos(r.conduit_out))) * 1.6;
+      plot(document.getElementById("gb-scatter"), [{ type: "scatter", mode: "markers+text", x: rows.map((r) => pos(r.conduit_out)), y: rows.map((r) => pos(r.conduit_in)),
+        // Jurisdictions with no conduit role are pinned to the floor; their labels are dropped to avoid clutter.
+        text: rows.map((r) => (pos(r.conduit_in) > floor || pos(r.conduit_out) > floor ? r.jurisdiction_id : "")),
+        textposition: "top center", customdata: rows.map((r) => [r.sink_centrality, r.conduit_in, r.conduit_out, r.jurisdiction_id]),
+        hovertemplate: `<b>%{customdata[3]}</b><br>${t("col.conduit_in")}: %{customdata[1]:.3f}<br>${t("col.conduit_out")}: %{customdata[2]:.3f}<br>${t("col.sink_centrality")}: %{customdata[0]:.3f}<extra></extra>`,
+        marker: { size: rows.map((r) => 14 + 26 * Math.sqrt((r.gdp || 0) / gmax)), color: sc, cmin: -smax, cmax: smax, colorscale: "RdBu", reversescale: false,
+          showscale: true, colorbar: { title: { text: t("col.sink_centrality") }, thickness: 12 },
+          line: { width: rows.map((r) => (r.is_conduit ? 4 : r.is_sink ? 3 : 1)), color: rows.map((r) => (r.is_conduit ? "#8b5cf6" : r.is_sink ? "#ef4444" : "#ffffff")) } } }],
+      { xaxis: { type: "log", dtick: 1, title: { text: t("conduits.axis.out") }, range: [Math.log10(floor) - 0.2, Math.log10(xmax)] },
+        yaxis: { type: "log", dtick: 1, title: { text: t("conduits.axis.in") }, range: [Math.log10(floor) - 0.2, Math.log10(ymax)] },
+        shapes: [{ type: "rect", xref: "x", yref: "y", x0: thr, x1: xmax, y0: thr, y1: ymax, fillcolor: "rgba(139,92,246,0.08)", line: { width: 0 } },
+          { type: "line", xref: "x", yref: "paper", x0: thr, x1: thr, y0: 0, y1: 1, line: { color: "#8b5cf6", dash: "dot", width: 1.5 } },
+          { type: "line", xref: "paper", yref: "y", x0: 0, x1: 1, y0: thr, y1: thr, line: { color: "#8b5cf6", dash: "dot", width: 1.5 } }],
+        annotations: marks.concat([{ xref: "x", yref: "y", x: Math.log10(xmax) - 0.05, y: Math.log10(ymax) - 0.05, text: t("conduits.quadrant"), showarrow: false,
+          xanchor: "right", yanchor: "top", font: { color: "#8b5cf6", size: 12 } }]) },
+      { name: "conduit_centrality", columns: ["jurisdiction_id", "conduit_in", "conduit_out", "sink_centrality", "is_conduit", "is_sink"], rows });
+      // sink centrality bars with the threshold
+      const order = rows.slice().sort((a, b) => (b.sink_centrality ?? -1e9) - (a.sink_centrality ?? -1e9));
+      plot(document.getElementById("gb-sink"), [{ type: "bar", x: order.map((r) => r.jurisdiction_id), y: order.map((r) => r.sink_centrality),
+        marker: { color: order.map((r) => (r.is_sink ? "#ef4444" : (r.sink_centrality ?? 0) >= 0 ? "#f97316" : "#2563eb")) },
+        hovertemplate: "%{x}: %{y:.3f}<extra></extra>" }],
+      { yaxis: { title: { text: t("col.sink_centrality") } }, showlegend: false, annotations: marks,
+        shapes: [{ type: "line", xref: "paper", yref: "y", x0: 0, x1: 1, y0: Number(sinkS.value), y1: Number(sinkS.value), line: { color: "#ef4444", dash: "dot", width: 1.5 } }] },
+      { name: "sink_centrality", columns: ["jurisdiction_id", "sink_centrality", "is_sink", "value_in", "value_out", "gdp"], rows: order });
+      // flows through three-country chains: origin -> conduit -> destination
+      const g3 = res.outputs.country_chains.filter((c) => c.countries === 3).sort((a, b) => b.value - a.value).slice(0, 60);
+      const sankeyNode = document.getElementById("gb-sankey");
+      if (!g3.length) { Plotly.purge(sankeyNode); sankeyNode.replaceChildren(el("p", { class: "empty", i18n: "conduits.no_g3" })); applyI18n(sankeyNode); }
+      else {
+        if (sankeyNode.querySelector("p.empty")) sankeyNode.replaceChildren();
+        const labels = [], index = {};
+        const node = (c, col) => { const k = col + c; if (!(k in index)) { index[k] = labels.length; labels.push({ c, col }); } return index[k]; };
+        const src = [], tgt = [], val = [], col = [];
+        g3.forEach((g) => { const [a, b, c] = g.chain.split(">");
+          src.push(node(a, 0)); tgt.push(node(b, 1)); val.push(g.value); col.push(jurColour(b) + "88");
+          src.push(node(b, 1)); tgt.push(node(c, 2)); val.push(g.value); col.push(jurColour(b) + "88"); });
+        plot(sankeyNode, [{ type: "sankey", arrangement: "snap", node: { label: labels.map((l) => l.c), color: labels.map((l) => jurColour(l.c)), pad: 14, thickness: 14,
+          line: { width: 0 } }, link: { source: src, target: tgt, value: val, color: col } }],
+        { annotations: marks, margin: { l: 10, r: 10, t: 34, b: 10 } },
+        { name: "three_country_chains", columns: ["chain", "value", "firm_paths"], rows: g3 });
+      }
+      document.getElementById("gb-table").replaceChildren(renderTable(["jurisdiction_id", "sink_centrality", "is_sink", "conduit_in", "conduit_out", "is_conduit", "entropy_in", "entropy_out", "value_in", "value_out", "gdp_share"], rows));
+    }
+    function kpiBox(label, value, colour) { return el("div", { class: "card kpi", style: "--c:" + colour }, [el("div", { class: "value", text: value }), el("div", { class: "label", text: label })]); }
+    async function pin() {
+      pinBtn.disabled = true;
+      try {
+        const res = await api("POST", "runs", { engine_id: GB_ENGINE, dataset_id: S.datasetId, parameters: params(), research_question: question.value });
+        toast(res.executed ? t("routes.pinned", { id: res.record.run_id }) : t("runs.blocked"));
+      } catch (e) { fail(e); } finally { pinBtn.disabled = false; }
+    }
+    sync();
     await compute();
   };
 
@@ -916,6 +1062,10 @@
     lsel.value = pick;
     await loadLocale(pick);
     lsel.addEventListener("change", async () => { try { await loadLocale(lsel.value); await loadDataset(); await route(); } catch (e) { fail(e); } });
+    S.mode = recall("mode") === "technical" ? "technical" : "plain";
+    const msel = document.getElementById("mode-select");
+    msel.value = S.mode;
+    msel.addEventListener("change", async () => { S.mode = msel.value; store("mode", S.mode); applyI18n(); await route(); });
     S.engines = await api("GET", "engines");
     await loadDatasets();
     document.getElementById("dataset-select").addEventListener("change", async (ev) => {

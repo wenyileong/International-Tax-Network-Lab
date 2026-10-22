@@ -32,6 +32,7 @@ RELATION_TYPES = ("equity", "voting", "control", "economic_interest")
 LICENCE_CLASSES = ("public", "public_attribution", "licensed_no_redistribution", "synthetic")
 RULE_STATUSES = ("source_backed", "derived", "synthetic_assumption")
 RELIEF_METHODS = ("exemption", "credit", "deduction")
+CONSOLIDATION = ("unconsolidated", "deconsolidated", "consolidated")
 RATE_MAX = 0.9999  # a rate of 100% would make every later formula degenerate
 
 STR, FLOAT, BOOL, DATE = "str", "float", "bool", "date"
@@ -222,11 +223,26 @@ SCHEMAS: dict[str, TableSchema] = {
         "taxing jurisdiction, where it differs from its general method (plan s 5.2).",
         added_in=2,
     ),
+    "entity_financials": TableSchema(
+        "entity_financials",
+        (
+            _c("entity_id", req=True, null=False, identifier=True),
+            _c("period", req=True, null=False),
+            _c("operating_revenue", FLOAT, req=True, null=False, minimum=0.0),
+            _c("currency", req=True, null=False),
+            _c("consolidation", req=True, null=False, choices=CONSOLIDATION),
+            _c("source_id", req=True, null=False, identifier=True),
+        ),
+        ("entity_id", "period"),
+        "Operating revenue per entity and period (Garcia-Bernardo and others weight chains by the revenue of "
+        "the owned firm). Consolidated figures should be deconsolidated before use.",
+        added_in=2,
+    ),
 }
 
 #: Tables in dependency order (referenced tables first).
 TABLE_ORDER = ("sources", "jurisdictions", "jurisdiction_attributes", "entities", "ownership", "illustrative_tax_edges",
-               "tax_domestic", "tax_treaty_dividends", "tax_relief_overrides")
+               "tax_domestic", "tax_treaty_dividends", "tax_relief_overrides", "entity_financials")
 TAX_TABLES = ("tax_domestic", "tax_treaty_dividends", "tax_relief_overrides")
 REQUIRED_TABLES = ("sources", "jurisdictions", "entities", "ownership")
 

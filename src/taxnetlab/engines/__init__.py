@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from taxnetlab.engines.base import Engine, EngineResult, EngineSpec, SpecificationNotValidatedError
 from taxnetlab.engines.demo import LinkSummaryEngine
-from taxnetlab.engines.placeholders import ConduitsSinksEngine, ScalableTdaEngine
+from taxnetlab.engines.gb2017 import ConduitsSinksEngine
+from taxnetlab.engines.placeholders import ScalableTdaEngine
 from taxnetlab.engines.vtrl2018 import TaxRoutingEngine
 
 _ENGINES: dict[str, Engine] = {}
