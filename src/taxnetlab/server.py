@@ -243,6 +243,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(200, api.import_csv(str(body.get("name") or ""), tables))
             if p == ["runs"]:
                 return self._json(200, api.run(body))
+            if len(p) == 3 and p[0] == "engines" and p[2] == "preview":
+                return self._json(200, api.preview(p[1], str(body.get("dataset_id") or ""), body.get("parameters")))
             if len(p) == 3 and p[0] == "runs" and p[2] == "replay":
                 return self._json(200, api.replay(p[1]))
             if p == ["quit"]:

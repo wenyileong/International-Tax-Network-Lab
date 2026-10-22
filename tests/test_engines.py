@@ -29,12 +29,13 @@ def test_registry_statuses_are_on_their_ladders():
     specs = {s.engine_id: s for s in list_engines()}
     for s in specs.values():
         assert s.status in STATUSES[s.track]
-    for eid in ("gb2017.conduits_sinks", "vtrl2018.tax_routing", "us10417262.tda"):
+    for eid in ("gb2017.conduits_sinks", "us10417262.tda"):
         assert specs[eid].status == "interface" and specs[eid].track == "reproduction" and not specs[eid].runnable
+    assert specs["vtrl2018.tax_routing"].status == "implemented"
     assert specs[DEMO].track == "demonstration"
 
 
-@pytest.mark.parametrize("eid", ["gb2017.conduits_sinks", "vtrl2018.tax_routing", "us10417262.tda"])
+@pytest.mark.parametrize("eid", ["gb2017.conduits_sinks", "us10417262.tda"])
 def test_interface_engines_fail_explicitly(eid, fixture01):
     with pytest.raises(SpecificationNotValidatedError):
         get_engine(eid).run(fixture01, {})

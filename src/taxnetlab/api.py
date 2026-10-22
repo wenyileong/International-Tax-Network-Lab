@@ -3,10 +3,14 @@ no front end calls engines directly. Every function returns plain JSON-serialisa
 
 from __future__ import annotations
 
+import threading
+import time
+from collections import OrderedDict
 from typing import Any
 
 from taxnetlab import __version__, runs, synthetic
 from taxnetlab.buildinfo import build_manifest, environment
+from taxnetlab.canonical import canonical_json
 from taxnetlab.datasets import Dataset
 from taxnetlab.engines import get_engine, list_engines
 from taxnetlab.schema import SCHEMAS, TABLE_ORDER
@@ -15,11 +19,43 @@ from taxnetlab.views import AGGREGATION_RULES, VIEWS, build_view, jurisdiction_m
 from taxnetlab.workspace import Workspace
 
 PREVIEW_ROWS = 1000
+PREVIEW_CACHE_SIZE = 128
+DATASET_CACHE_SIZE = 8
+
+
+class _LRU:
+    """Small thread-safe LRU cache (the server handles requests on several threads)."""
+
+    def __init__(self, size: int):
+        self.size, self.data, self.lock = size, OrderedDict(), threading.Lock()
+
+    def get(self, key):
+        with self.lock:
+            if key in self.data:
+                self.data.move_to_end(key)
+                return self.data[key]
+            return None
+
+    def put(self, key, value) -> None:
+        with self.lock:
+            self.data[key] = value
+            self.data.move_to_end(key)
+            while len(self.data) > self.size:
+                self.data.popitem(last=False)
 
 
 class Api:
     def __init__(self, workspace: Workspace):
         self.ws = workspace.ensure()
+        self._datasets = _LRU(DATASET_CACHE_SIZE)  # datasets are content-addressed, so caching is safe
+        self._previews = _LRU(PREVIEW_CACHE_SIZE)
+
+    def _dataset(self, dataset_id: str):
+        ds = self._datasets.get(dataset_id)
+        if ds is None:
+            ds = self.ws.load_dataset(dataset_id)
+            self._datasets.put(dataset_id, ds)
+        return ds
 
     # ------------------------------------------------------------------ about
     def about(self) -> dict[str, Any]:
@@ -47,7 +83,7 @@ class Api:
         return sorted(out, key=lambda d: d["name"].lower())
 
     def dataset(self, dataset_id: str) -> dict[str, Any]:
-        ds = self.ws.load_dataset(dataset_id)
+        ds = self._dataset(dataset_id)
         info = ds.describe()
         info["validation"] = ds.validate().to_dict()
         info["schemas"] = {name: {"columns": SCHEMAS[name].column_names, "primary_key": list(SCHEMAS[name].primary_key),
@@ -57,7 +93,7 @@ class Api:
     def table(self, dataset_id: str, table: str, limit: int = PREVIEW_ROWS) -> dict[str, Any]:
         if table not in SCHEMAS:
             raise KeyError(f"unknown table '{table}'")
-        ds = self.ws.load_dataset(dataset_id)
+        ds = self._dataset(dataset_id)
         rows = ds.tables[table]
         return {"table": table, "columns": SCHEMAS[table].column_names, "rows": rows[:limit],
                 "total_rows": len(rows), "truncated": len(rows) > limit}
@@ -65,7 +101,7 @@ class Api:
     def table_csv(self, dataset_id: str, table: str) -> str:
         if table not in SCHEMAS:
             raise KeyError(f"unknown table '{table}'")
-        return self.ws.load_dataset(dataset_id).csv_text(table)
+        return self._dataset(dataset_id).csv_text(table)
 
     def generate_synthetic(self, params: dict[str, Any]) -> dict[str, Any]:
         allowed = set(synthetic.DEFAULT_PARAMS) | {"name"}
@@ -92,14 +128,46 @@ class Api:
             raise ValueError(f"view must be one of {list(VIEWS)}")
         if rule not in AGGREGATION_RULES:
             raise ValueError(f"rule must be one of {list(AGGREGATION_RULES)}")
-        ds = self.ws.load_dataset(dataset_id)
+        ds = self._dataset(dataset_id)
         return view_to_json(ds, build_view(ds, view, rule, as_of or None, include_domestic))
 
     def matrix(self, dataset_id: str, rule: str = "count", as_of: str | None = None,
                include_domestic: bool = True) -> dict[str, Any]:
         if rule not in AGGREGATION_RULES:
             raise ValueError(f"rule must be one of {list(AGGREGATION_RULES)}")
-        return jurisdiction_matrix(self.ws.load_dataset(dataset_id), rule, as_of or None, include_domestic)
+        return jurisdiction_matrix(self._dataset(dataset_id), rule, as_of or None, include_domestic)
+
+    # ------------------------------------------------------------------ live previews (plan v2.2, s 8.1)
+    def preview(self, engine_id: str, dataset_id: str, parameters: dict[str, Any] | None) -> dict[str, Any]:
+        """Execute an engine without storing anything. Previews are exploratory, not results: they carry
+        the engine status and become citable only when pinned as a run (same parameters via :meth:`run`)."""
+        engine = get_engine(engine_id)
+        spec = engine.spec
+        base = {"engine_id": spec.engine_id, "status": spec.status, "track": spec.track, "version": spec.version,
+                "exploratory": True}
+        if not spec.runnable:
+            return {**base, "executed": False, "validation": {"ok": False, "summary": {"errors": 1}, "issues": [
+                {"level": "error", "code": "engine_not_runnable", "message": spec.next_step, "params": {
+                    "engine": spec.engine_id, "status": spec.status}, "table": None, "row": None, "column": None}]}}
+        params, report = engine.resolve_parameters(parameters or {})
+        if not report.ok:
+            return {**base, "executed": False, "validation": report.to_dict()}
+        key = (spec.engine_id, spec.version, dataset_id, canonical_json(params))
+        cached = self._previews.get(key)
+        if cached is not None:
+            return {**cached, "cached": True}
+        dataset = self._dataset(dataset_id)
+        report.extend(engine.validate(dataset, params))
+        if not report.ok:
+            return {**base, "executed": False, "validation": report.to_dict()}
+        started = time.perf_counter()
+        result = engine.run(dataset, params)
+        out = {**base, "executed": True, "parameters": params, "outcome": result.outcome,
+               "warnings": result.warnings, "assumptions": result.assumptions, "trace": result.trace,
+               "outputs": result.outputs, "validation": report.to_dict(), "data_status": dataset.data_status,
+               "elapsed_ms": round((time.perf_counter() - started) * 1000, 1), "cached": False}
+        self._previews.put(key, out)
+        return out
 
     # ------------------------------------------------------------------ runs
     def run(self, spec: dict[str, Any]) -> dict[str, Any]:

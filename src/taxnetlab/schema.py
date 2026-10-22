@@ -31,6 +31,8 @@ ID_RE = re.compile(r"^[A-Za-z0-9_.:\-]{1,64}$")
 RELATION_TYPES = ("equity", "voting", "control", "economic_interest")
 LICENCE_CLASSES = ("public", "public_attribution", "licensed_no_redistribution", "synthetic")
 RULE_STATUSES = ("source_backed", "derived", "synthetic_assumption")
+RELIEF_METHODS = ("exemption", "credit", "deduction")
+RATE_MAX = 0.9999  # a rate of 100% would make every later formula degenerate
 
 STR, FLOAT, BOOL, DATE = "str", "float", "bool", "date"
 
@@ -54,6 +56,9 @@ class TableSchema:
     columns: tuple[Column, ...]
     primary_key: tuple[str, ...]
     description: str = ""
+    #: Schema generation in which the table was introduced. Tables added after generation 1 enter the
+    #: dataset hash only when they have rows, so that adding a table never changes existing dataset ids.
+    added_in: int = 1
 
     @property
     def column_names(self) -> list[str]:
@@ -166,10 +171,63 @@ SCHEMAS: dict[str, TableSchema] = {
         ("edge_id",),
         "Interface-only scalar rates. Not a representation of tax law (plan s 5.2).",
     ),
+    "tax_domestic": TableSchema(
+        "tax_domestic",
+        (
+            _c("jurisdiction_id", req=True, null=False, identifier=True),
+            _c("period", req=True, null=False),
+            _c("cit_rate", FLOAT, req=True, null=False, minimum=0.0, maximum=RATE_MAX),
+            _c("dividend_wht_rate", FLOAT, req=True, null=False, minimum=0.0, maximum=RATE_MAX),
+            _c("relief_method", req=True, null=False, choices=RELIEF_METHODS),
+            _c("rule_status", req=True, null=False, choices=RULE_STATUSES),
+            _c("verified", BOOL, req=True, null=False),
+            _c("source_id", req=True, null=False, identifier=True),
+            _c("note"),
+        ),
+        ("jurisdiction_id", "period"),
+        "Statutory corporate income tax, general dividend withholding rate and the relief method the "
+        "jurisdiction applies to foreign dividends (van 't Riet and Lejour, s 4).",
+        added_in=2,
+    ),
+    "tax_treaty_dividends": TableSchema(
+        "tax_treaty_dividends",
+        (
+            _c("payer_jurisdiction", req=True, null=False, identifier=True),
+            _c("recipient_jurisdiction", req=True, null=False, identifier=True),
+            _c("period", req=True, null=False),
+            _c("dividend_wht_rate", FLOAT, req=True, null=False, minimum=0.0, maximum=RATE_MAX),
+            _c("rule_status", req=True, null=False, choices=RULE_STATUSES),
+            _c("verified", BOOL, req=True, null=False),
+            _c("source_id", req=True, null=False, identifier=True),
+            _c("note"),
+        ),
+        ("payer_jurisdiction", "recipient_jurisdiction", "period"),
+        "Directional treaty withholding: the rate the payer jurisdiction may levy on dividends to the recipient.",
+        added_in=2,
+    ),
+    "tax_relief_overrides": TableSchema(
+        "tax_relief_overrides",
+        (
+            _c("relieving_jurisdiction", req=True, null=False, identifier=True),
+            _c("taxing_jurisdiction", req=True, null=False, identifier=True),
+            _c("period", req=True, null=False),
+            _c("relief_method", req=True, null=False, choices=RELIEF_METHODS),
+            _c("rule_status", req=True, null=False, choices=RULE_STATUSES),
+            _c("verified", BOOL, req=True, null=False),
+            _c("source_id", req=True, null=False, identifier=True),
+            _c("note"),
+        ),
+        ("relieving_jurisdiction", "taxing_jurisdiction", "period"),
+        "Directional relief: the method the relieving (receiving) jurisdiction applies to dividends from the "
+        "taxing jurisdiction, where it differs from its general method (plan s 5.2).",
+        added_in=2,
+    ),
 }
 
 #: Tables in dependency order (referenced tables first).
-TABLE_ORDER = ("sources", "jurisdictions", "jurisdiction_attributes", "entities", "ownership", "illustrative_tax_edges")
+TABLE_ORDER = ("sources", "jurisdictions", "jurisdiction_attributes", "entities", "ownership", "illustrative_tax_edges",
+               "tax_domestic", "tax_treaty_dividends", "tax_relief_overrides")
+TAX_TABLES = ("tax_domestic", "tax_treaty_dividends", "tax_relief_overrides")
 REQUIRED_TABLES = ("sources", "jurisdictions", "entities", "ownership")
 
 _TRUE = {"true", "1", "yes", "y", "t"}

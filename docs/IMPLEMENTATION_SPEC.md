@@ -1,6 +1,6 @@
 # Implementation Specification
 
-> Build 0.1 document, retained for history. Architecture, data model, provenance and release gates are now governed by `PROJECT_PLAN_v2_1.md`; the state of the build is in `BUILD_0_2_STATUS.md`.
+> Build 0.1 document, retained for history. Architecture, data model, provenance and release gates are now governed by `PROJECT_PLAN_v2_2.md`; the state of the build is in `BUILD_0_2_STATUS.md`.
 
 ## Purpose
 A local-first academic workbench for inspecting and comparing international-taxation networks. The interface and data layer are shared; model engines remain separate.

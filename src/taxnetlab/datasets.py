@@ -228,6 +228,32 @@ class Dataset:
                             table="illustrative_tax_edges", row=n, params={"id": jid})
             check_source("illustrative_tax_edges", n, e["source_id"])
 
+        # tax rules (van 't Riet and Lejour reproduction tables)
+        def check_rule_row(table: str, n: int, row: dict[str, Any], cols: tuple[str, ...]) -> None:
+            for col in cols:
+                jid = row[col]
+                if jid not in jurisdictions:
+                    r.error("unknown_jurisdiction", f"{col} '{jid}' is not known", table=table, row=n, column=col,
+                            params={"id": jid})
+                elif not jurisdictions[jid]["fictional"] and row["rule_status"] == "synthetic_assumption":
+                    r.error("synthetic_on_real_jurisdiction",
+                            f"synthetic tax assumption attributed to real jurisdiction '{jid}'", table=table, row=n,
+                            params={"id": jid})
+            if len(cols) == 2 and row[cols[0]] == row[cols[1]]:
+                r.error("same_jurisdiction_pair", f"{cols[0]} and {cols[1]} are the same", table=table, row=n,
+                        params={"id": row[cols[0]]})
+            check_source(table, n, row["source_id"])
+            if not row["verified"] and not is_synthetic_source(row["source_id"]):
+                r.warning("unverified_legal_row", "legal row not yet verified; results relying on it are flagged",
+                          table=table, row=n, params={})
+
+        for n, row in enumerate(t["tax_domestic"], start=1):
+            check_rule_row("tax_domestic", n, row, ("jurisdiction_id",))
+        for n, row in enumerate(t["tax_treaty_dividends"], start=1):
+            check_rule_row("tax_treaty_dividends", n, row, ("payer_jurisdiction", "recipient_jurisdiction"))
+        for n, row in enumerate(t["tax_relief_overrides"], start=1):
+            check_rule_row("tax_relief_overrides", n, row, ("relieving_jurisdiction", "taxing_jurisdiction"))
+
         if not t["entities"]:
             r.warning("empty_table", "no entities", table="entities", params={"table": "entities"})
         status = self.data_status
@@ -253,7 +279,10 @@ class Dataset:
         return canonical_csv(self.tables[table], schema.column_names, schema.primary_key)
 
     def table_hashes(self) -> dict[str, str]:
-        return {table: sha256_text(self.csv_text(table)) for table in TABLE_ORDER}
+        """Hashes of the tables that make up the content address. Tables introduced after schema
+        generation 1 are included only when non-empty, so existing dataset ids never change."""
+        return {table: sha256_text(self.csv_text(table)) for table in TABLE_ORDER
+                if SCHEMAS[table].added_in == 1 or self.tables[table]}
 
     @property
     def content_hash(self) -> str:

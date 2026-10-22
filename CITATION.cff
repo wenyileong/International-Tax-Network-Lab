@@ -2,8 +2,8 @@ cff-version: 1.2.0
 message: "If you use this software, please cite it as below."
 title: "International Tax Network Lab"
 type: software
-version: 0.2.0
-date-released: 2026-10-20
+version: 0.3.0
+date-released: 2026-10-22
 authors:
   - family-names: Leong
     given-names: Wen Yi

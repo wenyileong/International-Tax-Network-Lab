@@ -39,7 +39,7 @@ class SpecificationNotValidatedError(NotImplementedError):
 @dataclass(frozen=True)
 class Parameter:
     name: str
-    type: str  # "bool" | "choice" | "date" | "float" | "int"
+    type: str  # "bool" | "choice" | "date" | "float" | "int" | "text" | "overrides"
     default: Any
     choices: tuple[str, ...] | None = None
     minimum: float | None = None
@@ -172,10 +172,30 @@ def _coerce(p: Parameter, value: Any) -> Any:
         if value in (None, ""):
             return None
         return _dt.date.fromisoformat(str(value)).isoformat()
+    if p.type == "text":
+        if value is None:
+            return None
+        if not isinstance(value, str) or len(value) > 200:
+            raise ValueError("expected text of at most 200 characters")
+        return value.strip() or None
+    if p.type == "overrides":
+        # Scenario overrides: a list of small objects; their meaning is checked by the engine's validate().
+        if value in (None, ""):
+            return []
+        if isinstance(value, str):
+            import json
+            value = json.loads(value)
+        if not isinstance(value, list) or not all(isinstance(v, dict) for v in value) or len(value) > 500:
+            raise ValueError("expected a list of override objects")
+        return [dict(v) for v in value]
     if p.type in ("float", "int"):
         if isinstance(value, bool):
             raise ValueError("expected a number")
         number = float(value) if p.type == "float" else int(value)
+        if p.type == "int" and isinstance(value, float) and not value.is_integer():
+            raise ValueError("expected a whole number")
+        if p.type == "float" and (number != number or number in (float("inf"), float("-inf"))):
+            raise ValueError("expected a finite number")
         if p.minimum is not None and number < p.minimum:
             raise ValueError(f"must be at least {p.minimum}")
         if p.maximum is not None and number > p.maximum:

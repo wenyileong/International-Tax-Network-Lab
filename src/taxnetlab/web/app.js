@@ -120,9 +120,10 @@
     return out;
   }
   function watermark(labels) {
-    const text = labels.filter(Boolean).join("  ·  ");
-    return text ? [{ text, xref: "paper", yref: "paper", x: 1, y: 1, xanchor: "right", yanchor: "bottom", yshift: 6,
-      showarrow: false, font: { size: 11, color: "rgba(234,88,12,0.85)" } }] : [];
+    // Several labels are stacked rather than joined, so that narrow charts never clip them.
+    const items = labels.filter(Boolean);
+    return items.length ? [{ text: items.join("<br>"), xref: "paper", yref: "paper", x: 1, y: 1, xanchor: "right", yanchor: "bottom",
+      yshift: 4, align: "right", showarrow: false, font: { size: 10.5, color: "rgba(234,88,12,0.9)" }, _wm: items.length }] : [];
   }
   function statusWatermark() {
     const st = S.dataset && S.dataset.data_status;
@@ -132,7 +133,11 @@
     const svgIcon = { width: 1000, height: 1000, path: "M200 100h400l200 200v600H200z M600 100v200h200 M330 520h340M330 640h340M330 760h220" };
     const buttons = [{ name: t("chart.download_svg"), icon: svgIcon, click: (gd) => Plotly.downloadImage(gd, { format: "svg", filename: csv ? csv.name : "chart" }) }];
     if (csv) buttons.push({ name: t("chart.download_csv"), icon: Plotly.Icons.disk, click: () => download(csv.name + ".csv", csvOf(csv.columns, csv.rows)) });
-    return Plotly.react(node, traces, baseLayout(layout), {
+    const full = baseLayout(layout);
+    const wm = (full.annotations || []).find((a) => a._wm);
+    if (wm) full.margin = Object.assign({}, full.margin, { t: Math.max((full.margin || {}).t || 0, 12 + 14 * wm._wm) });
+    full.annotations = (full.annotations || []).map((a) => { const c = Object.assign({}, a); delete c._wm; return c; });
+    return Plotly.react(node, traces, full, {
       responsive: true, displaylogo: false, modeBarButtonsToRemove: ["lasso2d", "select2d"],
       modeBarButtonsToAdd: buttons, toImageButtonOptions: { format: "png", scale: 2, filename: csv ? csv.name : "chart" },
     });
@@ -155,6 +160,8 @@
       const jt = await api("GET", "datasets/" + S.datasetId + "/tables/jurisdictions");
       info.jurisdictions = jt.rows.map((r) => r.jurisdiction_id);
       info.jurisdictionNames = Object.fromEntries(jt.rows.map((r) => [r.jurisdiction_id, r.display_name]));
+      const at = await api("GET", "datasets/" + S.datasetId + "/tables/jurisdiction_attributes");
+      info.gdp = at.rows.filter((r) => String(r.attribute).toLowerCase() === "gdp");
       S.dataset = info;
       store("dataset", S.datasetId);
     }
@@ -393,8 +400,290 @@
     await draw();
   };
 
+  // ------------------------------------------------------------------ tax routes (live explorer, plan v2.2 s 8.1)
+  const ROUTE_ENGINE = "vtrl2018.tax_routing";
+  PAGES.routes = async function (root) {
+    header(root, "routes.title", "routes.lede");
+    if (needDataset(root)) return;
+    const eng = S.engines.find((e) => e.engine_id === ROUTE_ENGINE);
+    const dom = (await api("GET", `datasets/${S.datasetId}/tables/tax_domestic`)).rows;
+    if (!eng || !dom.length) {
+      root.append(el("div", { class: "card empty" }, [el("p", { i18n: "routes.no_tax_data" }), el("a", { href: "#/data", i18n: "nav.data" })]));
+      return;
+    }
+    const treaties = (await api("GET", `datasets/${S.datasetId}/tables/tax_treaty_dividends`)).rows;
+    const periods = [...new Set(dom.map((r) => r.period))].sort();
+    const defaults = Object.fromEntries(eng.parameters.map((p) => [p.name, p.default]));
+    const saved = (() => { try { return JSON.parse(recall("routes." + S.datasetId) || "null"); } catch (e) { return null; } })();
+    const R = Object.assign({ period: periods[periods.length - 1], host: null, home: null, adjust: null, payer: null, recipient: null,
+      settings: { penalty: defaults.penalty, tolerance: defaults.tolerance, max_intermediates: defaults.max_intermediates,
+        world_average: defaults.world_average, centrality_weights: defaults.centrality_weights }, overrides: [] }, saved || {});
+    if (!periods.includes(R.period)) R.period = periods[periods.length - 1];
+    const codesFor = (per) => dom.filter((r) => r.period === per).map((r) => r.jurisdiction_id).sort();
+    let codes = codesFor(R.period);
+    const pick = (v, alt) => (codes.includes(v) ? v : alt);
+    R.host = pick(R.host, codes[0]); R.home = pick(R.home, codes[codes.length - 1]);
+    R.adjust = pick(R.adjust, codes[0]); R.payer = pick(R.payer, R.host); R.recipient = pick(R.recipient, codes.find((c) => c !== R.payer));
+    let last = null, seq = 0, timer = null;
+    const base = (j) => dom.find((r) => r.jurisdiction_id === j && r.period === R.period);
+    const baseTreaty = (a, b) => treaties.find((r) => r.payer_jurisdiction === a && r.recipient_jurisdiction === b && r.period === R.period);
+    const findOv = (o) => R.overrides.findIndex((x) => x.kind === o.kind && x.jurisdiction === o.jurisdiction && x.payer === o.payer && x.recipient === o.recipient);
+    function setOverride(o, isBase) {
+      const i = findOv(o);
+      if (isBase) { if (i >= 0) R.overrides.splice(i, 1); } else if (i >= 0) R.overrides[i] = o; else R.overrides.push(o);
+    }
+    const ovValue = (o, fallback) => { const i = findOv(o); return i >= 0 ? R.overrides[i].value : fallback; };
+    const effCit = (j) => ovValue({ kind: "cit", jurisdiction: j }, base(j).cit_rate);
+
+    // ---- controls
+    const sel = (opts, value, labeler) => { const x = el("select", { class: "select" }, opts.map((o) => el("option", { value: o, text: labeler ? labeler(o) : o }))); x.value = value; return x; };
+    const nameOf = (j) => `${j} · ${(S.dataset.jurisdictionNames || {})[j] || ""}`;
+    const hostSel = sel(codes, R.host, nameOf), homeSel = sel(codes, R.home, nameOf), periodSel = sel(periods, R.period);
+    const swap = el("button", { class: "btn btn-ghost", text: "⇄", title: t("routes.swap"), onclick: () => { [hostSel.value, homeSel.value] = [homeSel.value, hostSel.value]; changed(); } });
+    const adjustSel = sel(codes, R.adjust, nameOf);
+    const slider = (min, max, step) => el("input", { type: "range", min, max, step, class: "slider" });
+    const citS = slider(0, 0.6, 0.005), whtS = slider(0, 0.4, 0.005), treatyS = slider(0, 0.4, 0.005);
+    const citV = el("output", { class: "mono" }), whtV = el("output", { class: "mono" }), treatyV = el("output", { class: "mono" });
+    const reliefSel = sel(["exemption", "credit", "deduction"], "exemption", (m) => t("relief." + m));
+    const payerSel = sel(codes, R.payer, nameOf), recipientSel = sel(codes, R.recipient, nameOf);
+    const treatyOn = el("input", { type: "checkbox" });
+    const chips = el("div", { class: "chips" });
+    const status = el("p", { class: "muted small", style: "min-height:1.4em" });
+    const settings = {
+      penalty: el("input", { type: "number", min: 0, max: 0.01, step: 0.0001, value: R.settings.penalty }),
+      tolerance: slider(0, 0.02, 0.0005), max_intermediates: sel(["1", "2", "3", "4", "5"], String(R.settings.max_intermediates)),
+      world_average: sel(["unweighted", "gdp"], R.settings.world_average, (v) => t("routes.wa." + v)),
+      centrality_weights: sel(["gdp_product", "unweighted"], R.settings.centrality_weights, (v) => t("routes.w." + v)),
+    };
+    settings.tolerance.value = R.settings.tolerance;
+    const tolV = el("output", { class: "mono" });
+    const question = el("textarea", { rows: 2, "data-i18n-placeholder": "runs.question_ph", placeholder: t("runs.question_ph") });
+    const pinBtn = el("button", { class: "btn", i18n: "routes.pin", onclick: pin });
+    const field = (key, ...kids) => el("label", { class: "field" }, [el("span", { i18n: key }), ...kids]);
+    const row = (...kids) => el("div", { class: "slider-row" }, kids);
+
+    const controls = el("div", { class: "card live-panel" }, [
+      el("h2", { i18n: "routes.route" }),
+      el("div", { class: "controls" }, [field("routes.host", hostSel), swap, field("routes.home", homeSel), periods.length > 1 ? field("routes.period", periodSel) : null]),
+      el("h2", { i18n: "routes.adjust_title" }),
+      field("routes.jurisdiction", adjustSel),
+      field("routes.cit", row(citS, citV)), field("routes.wht", row(whtS, whtV)), field("routes.relief", reliefSel),
+      el("h2", { style: "margin-top:14px", i18n: "routes.treaty_title" }),
+      el("div", { class: "controls" }, [field("routes.payer", payerSel), field("routes.recipient", recipientSel)]),
+      el("label", { class: "field inline" }, [treatyOn, el("span", { i18n: "routes.treaty_exists" })]),
+      field("routes.treaty_rate", row(treatyS, treatyV)),
+      el("h2", { style: "margin-top:14px", i18n: "routes.scenario" }), chips,
+      el("details", {}, [el("summary", { i18n: "routes.settings" }),
+        field("param.penalty", settings.penalty), field("param.tolerance", row(settings.tolerance, tolV)),
+        field("param.max_intermediates", settings.max_intermediates), field("param.world_average", settings.world_average),
+        field("param.centrality_weights", settings.centrality_weights)]),
+      el("div", { class: "spacer" }), status,
+      el("p", { class: "muted small", i18n: "routes.exploratory_note" }), question, el("div", { style: "height:8px" }), pinBtn,
+    ]);
+    const mapNode = el("div", { class: "plot tall" }), barNode = el("div", { class: "plot short" }), heatNode = el("div", { class: "plot" });
+    const centNode = el("div", { class: "plot" }), sweepNode = el("div", { class: "plot short" });
+    const legsBox = el("div"), headline = el("div", { class: "headline" });
+    const sweepBtns = el("div", { class: "btn-row" }, [
+      el("button", { class: "btn btn-ghost", i18n: "routes.sweep_cit", onclick: () => sweep("cit") }),
+      el("button", { class: "btn btn-ghost", i18n: "routes.sweep_wht", onclick: () => sweep("wht") }),
+      el("button", { class: "btn btn-ghost", i18n: "routes.sweep_treaty", onclick: () => sweep("treaty") })]);
+    root.append(el("div", { class: "live-grid" }, [controls, el("div", { class: "grid" }, [
+      el("div", { class: "card" }, [headline, mapNode, el("p", { class: "legend-note", i18n: "routes.map_note" })]),
+      el("div", { class: "grid grid-2" }, [el("div", { class: "card" }, [el("h2", { i18n: "routes.decomposition" }), barNode]),
+        el("div", { class: "card" }, [el("h2", { i18n: "routes.legs" }), legsBox])]),
+      el("div", { class: "grid grid-2" }, [el("div", { class: "card" }, [el("h2", { i18n: "routes.shop_matrix" }), heatNode]),
+        el("div", { class: "card" }, [el("h2", { i18n: "routes.centrality" }), centNode])]),
+      el("div", { class: "card" }, [el("h2", { i18n: "routes.sweep" }), el("p", { class: "muted small", i18n: "routes.sweep_note" }), sweepBtns, sweepNode]),
+    ])]));
+
+    function syncControls() {
+      const b = base(R.adjust);
+      citS.value = effCit(R.adjust); citV.textContent = pct(Number(citS.value));
+      whtS.value = ovValue({ kind: "wht", jurisdiction: R.adjust }, b.dividend_wht_rate); whtV.textContent = pct(Number(whtS.value));
+      reliefSel.value = ovValue({ kind: "relief", jurisdiction: R.adjust }, b.relief_method);
+      const bt = baseTreaty(R.payer, R.recipient);
+      const tv = ovValue({ kind: "treaty", payer: R.payer, recipient: R.recipient }, bt ? bt.dividend_wht_rate : undefined);
+      treatyOn.checked = tv !== null && tv !== undefined;
+      treatyS.disabled = !treatyOn.checked;
+      treatyS.value = treatyOn.checked ? tv : base(R.payer).dividend_wht_rate;
+      treatyV.textContent = treatyOn.checked ? pct(Number(treatyS.value)) : t("routes.no_treaty");
+      tolV.textContent = pct(Number(settings.tolerance.value));
+      chips.replaceChildren(...(R.overrides.length ? R.overrides.map((o, i) => el("span", { class: "chip-ov" }, [describeOv(o),
+        el("button", { class: "chip-x", title: t("routes.remove"), text: "×", onclick: () => { R.overrides.splice(i, 1); changed(true); } })])) : [el("span", { class: "muted small", i18n: "routes.no_overrides" })]),
+      R.overrides.length ? el("button", { class: "btn btn-ghost", i18n: "routes.reset", onclick: () => { R.overrides = []; changed(true); } }) : "");
+    }
+    function describeOv(o) {
+      const v = o.value === null ? t("routes.no_treaty") : typeof o.value === "number" ? pct(o.value) : t("relief." + o.value);
+      if (o.kind === "treaty") return `${t("routes.ov.treaty")} ${o.payer} → ${o.recipient}: ${v}`;
+      return `${t("routes.ov." + o.kind)} ${o.jurisdiction}: ${v}`;
+    }
+    function params(extra) {
+      return Object.assign({ period: R.period, penalty: Number(settings.penalty.value), tolerance: Number(settings.tolerance.value),
+        max_intermediates: Number(settings.max_intermediates.value), world_average: settings.world_average.value,
+        centrality_weights: settings.centrality_weights.value, overrides: R.overrides.map((o) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined))) }, extra || {});
+    }
+    function changed(immediate) {
+      R.host = hostSel.value; R.home = homeSel.value; R.adjust = adjustSel.value; R.payer = payerSel.value; R.recipient = recipientSel.value;
+      if (R.period !== periodSel.value) { R.period = periodSel.value; codes = codesFor(R.period); R.overrides = []; }
+      R.settings = { penalty: Number(settings.penalty.value), tolerance: Number(settings.tolerance.value),
+        max_intermediates: Number(settings.max_intermediates.value), world_average: settings.world_average.value, centrality_weights: settings.centrality_weights.value };
+      store("routes." + S.datasetId, JSON.stringify(R));
+      syncControls();
+      clearTimeout(timer);
+      timer = setTimeout(compute, immediate ? 0 : 160);
+    }
+    hostSel.addEventListener("change", () => changed(true)); homeSel.addEventListener("change", () => changed(true));
+    periodSel.addEventListener("change", () => changed(true));
+    adjustSel.addEventListener("change", () => changed(true));
+    payerSel.addEventListener("change", () => changed(true)); recipientSel.addEventListener("change", () => changed(true));
+    citS.addEventListener("input", () => { setOverride({ kind: "cit", jurisdiction: R.adjust, value: Number(citS.value) }, Math.abs(Number(citS.value) - base(R.adjust).cit_rate) < 1e-9); changed(); });
+    whtS.addEventListener("input", () => { setOverride({ kind: "wht", jurisdiction: R.adjust, value: Number(whtS.value) }, Math.abs(Number(whtS.value) - base(R.adjust).dividend_wht_rate) < 1e-9); changed(); });
+    reliefSel.addEventListener("change", () => { setOverride({ kind: "relief", jurisdiction: R.adjust, value: reliefSel.value }, reliefSel.value === base(R.adjust).relief_method); changed(true); });
+    const treatyChanged = () => {
+      if (R.payer === R.recipient) { toast(t("routes.same_pair")); return; }
+      const bt = baseTreaty(R.payer, R.recipient);
+      const value = treatyOn.checked ? Number(treatyS.value) : null;
+      const isBase = bt ? value !== null && Math.abs(value - bt.dividend_wht_rate) < 1e-9 : value === null;
+      setOverride({ kind: "treaty", payer: R.payer, recipient: R.recipient, value }, isBase);
+      changed(!treatyOn.checked);
+    };
+    treatyOn.addEventListener("change", treatyChanged); treatyS.addEventListener("input", treatyChanged);
+    Object.values(settings).forEach((c) => c.addEventListener(c.type === "range" ? "input" : "change", () => changed()));
+
+    async function compute() {
+      const my = ++seq;
+      status.textContent = t("routes.computing");
+      try {
+        const res = await api("POST", `engines/${ROUTE_ENGINE}/preview`, { dataset_id: S.datasetId, parameters: params() });
+        if (my !== seq) return; // a newer request superseded this one
+        if (!res.executed) { status.replaceChildren(el("span", { class: "err-text", text: t("runs.blocked") })); legsBox.replaceChildren(issuesList(res.validation)); return; }
+        last = res;
+        status.textContent = t("routes.status", { ms: res.cached ? t("routes.cached") : fmt(res.elapsed_ms, 0) + " ms", status: t("status." + res.status) })
+          + (res.warnings.length ? "  ·  " + res.warnings.join(" ") : "");
+        draw(res);
+      } catch (e) { if (my === seq) fail(e); }
+    }
+
+    function draw(res) {
+      const pairs = res.outputs.pairs, cent = res.outputs.centrality;
+      const pr = pairs.find((p) => p.host === R.host && p.home === R.home);
+      const marks = watermark([t("wm.exploratory"), res.status !== "verified" ? t("wm.unverified") : null, statusWatermark()]);
+      // headline
+      if (R.host === R.home) headline.replaceChildren(el("p", { class: "muted", i18n: "routes.same_host_home" }));
+      else if (!pr) headline.replaceChildren(el("p", { class: "err-text", i18n: "routes.no_route" }));
+      else headline.replaceChildren(el("div", { class: "kpis" }, [
+        kpi(t("routes.k.direct"), pct(pr.direct_te), "#94a3b8"), kpi(t("routes.k.best"), pct(pr.best_te), "#ef4444"),
+        kpi(t("routes.k.gain"), pr.shop > 1e-12 ? pct(pr.shop) : "0", "#22c55e"),
+        kpi(t("routes.k.route"), pr.best_route.split(">").join(" → "), "#8b5cf6")]));
+      // route map
+      const n = codes.length, pos = Object.fromEntries(codes.map((c, i) => [c, [Math.cos(Math.PI / 2 - 2 * Math.PI * i / n), Math.sin(Math.PI / 2 - 2 * Math.PI * i / n)]]));
+      const gdp = Object.fromEntries((S.dataset.gdp || []).map((g) => [g.jurisdiction_id, g.value]));
+      const gmax = Math.max(1, ...codes.map((c) => gdp[c] || 0));
+      const cits = codes.map(effCit), cmin = Math.min(...cits), cmax = Math.max(...cits);
+      const traces = [], ann = [];
+      const legs = pr ? res.outputs.legs.filter((l) => l.host === R.host && l.home === R.home).sort((a, b) => a.leg - b.leg) : [];
+      if (pr && pr.intermediates > 0) {
+        const [ax, ay] = pos[R.host], [bx, by] = pos[R.home];
+        traces.push({ type: "scatter", mode: "lines", x: [ax, bx], y: [ay, by], line: { color: "#94a3b8", width: 2, dash: "dash" }, hoverinfo: "skip", name: t("routes.direct_route") });
+        ann.push({ x: (ax + bx) / 2, y: (ay + by) / 2, text: `${t("routes.direct")} ${pct(pr.direct_te)}`, showarrow: false, font: { size: 11, color: "#64748b" }, bgcolor: "rgba(255,255,255,0.7)" });
+      }
+      if (pr) {
+        const dmax = Math.max(0.0001, ...legs.map((l) => l.d_leg));
+        legs.forEach((l) => {
+          const [x0, y0] = pos[l.from_jurisdiction], [x1, y1] = pos[l.to_jurisdiction];
+          const c = RAMP[Math.min(RAMP.length - 1, Math.round((l.d_leg / dmax) * (RAMP.length - 1)))];
+          traces.push({ type: "scatter", mode: "lines", x: [x0, x1], y: [y0, y1], line: { color: c, width: 6 }, hoverinfo: "text", showlegend: false,
+            text: `${l.from_jurisdiction} → ${l.to_jurisdiction}<br>${t("relief." + l.relief_method)} · WHT ${pct(l.wht_rate)} (${t("routes.basis." + l.wht_basis)})<br>d = ${pct(l.d_leg)}` });
+          ann.push({ x: x0 * 0.1 + x1 * 0.9, y: y0 * 0.1 + y1 * 0.9, ax: x0 * 0.35 + x1 * 0.65, ay: y0 * 0.35 + y1 * 0.65, xref: "x", yref: "y", axref: "x", ayref: "y",
+            showarrow: true, arrowhead: 2, arrowsize: 1.3, arrowwidth: 2.5, arrowcolor: c, text: "" });
+          ann.push({ x: (x0 + x1) / 2, y: (y0 + y1) / 2, text: `d ${pct(l.d_leg)}`, showarrow: false, font: { size: 12, color: c }, bgcolor: "rgba(255,255,255,0.8)", yshift: 12 });
+        });
+      }
+      traces.push({ type: "scatter", mode: "markers+text", x: codes.map((c) => pos[c][0]), y: codes.map((c) => pos[c][1]), text: codes,
+        textposition: codes.map((c) => (pos[c][1] < -0.2 ? "bottom center" : "top center")), showlegend: false, customdata: codes,
+        hovertemplate: codes.map((c) => `<b>${escapeHtml(nameOf(c))}</b><br>CIT ${pct(effCit(c))} · WHT ${pct(ovValue({ kind: "wht", jurisdiction: c }, base(c).dividend_wht_rate))}<br>${t("relief." + ovValue({ kind: "relief", jurisdiction: c }, base(c).relief_method))}<extra></extra>`),
+        marker: { size: codes.map((c) => 18 + 22 * Math.sqrt((gdp[c] || gmax / 4) / gmax)), color: cits, cmin, cmax: cmax > cmin ? cmax : cmin + 0.01, colorscale: SCALE,
+          showscale: true, colorbar: { title: { text: t("routes.cit") }, tickformat: ".0%", thickness: 12, len: 0.6 },
+          line: { width: codes.map((c) => (c === R.host || c === R.home ? 4 : 1.5)), color: codes.map((c) => (c === R.host ? "#ef4444" : c === R.home ? "#22c55e" : "#ffffff")) } } });
+      plot(mapNode, traces, { showlegend: false, hovermode: "closest", margin: { l: 10, r: 10, t: 30, b: 10 }, xaxis: { visible: false, scaleanchor: "y", range: [-1.35, 1.35] },
+        yaxis: { visible: false, range: [-1.3, 1.3] }, annotations: ann.concat(marks) }, { name: `route_${R.host}_${R.home}`, columns: LEGCOLS, rows: legs });
+      mapNode._tnlClick = (ev) => { const p = ev.points && ev.points[0]; if (p && p.customdata && codes.includes(p.customdata)) { adjustSel.value = p.customdata; changed(true); } };
+      if (!mapNode._tnlBound) { mapNode.on("plotly_click", (ev) => mapNode._tnlClick && mapNode._tnlClick(ev)); mapNode._tnlBound = true; }
+      // decomposition: host CIT and repatriation tax, direct versus best
+      if (pr) {
+        const hostCit = effCit(R.host);
+        const rows = [[t("routes.direct"), hostCit, (1 - hostCit) * pr.direct_d], [t("routes.best"), hostCit, (1 - hostCit) * pr.best_d]];
+        plot(barNode, [
+          { type: "bar", name: t("routes.part.host_cit"), x: rows.map((r) => r[0]), y: rows.map((r) => r[1]), marker: { color: "#6366f1" }, hovertemplate: "%{y:.2%}<extra>%{fullData.name}</extra>" },
+          { type: "bar", name: t("routes.part.repatriation"), x: rows.map((r) => r[0]), y: rows.map((r) => r[2]), marker: { color: ["#f97316", "#ef4444"] }, hovertemplate: "%{y:.2%}<extra>%{fullData.name}</extra>" }],
+        { barmode: "stack", yaxis: { tickformat: ".0%", title: { text: t("routes.axis.te") } }, annotations: marks },
+        { name: `decomposition_${R.host}_${R.home}`, columns: ["route", "host_cit", "repatriation_tax"], rows: rows });
+        legsBox.replaceChildren(renderTable(["leg", "from_jurisdiction", "to_jurisdiction", "relief_method", "wht_rate", "wht_basis", "payer_cit_used", "payer_cit_basis", "d_leg"],
+          legs.map((l) => Object.assign({}, l, { relief_method: t("relief." + l.relief_method), wht_basis: t("routes.basis." + l.wht_basis), payer_cit_basis: t("routes.basis." + l.payer_cit_basis) }))),
+        el("p", { class: "muted small", text: t("routes.pair_counts", { range: pr.routes_in_range, strict: pr.routes_strict }) }));
+      }
+      // treaty-shopping matrix
+      const z = codes.map((h) => codes.map((m) => { const q = pairs.find((p) => p.host === h && p.home === m); return q ? q.shop : null; }));
+      plot(heatNode, [{ type: "heatmap", x: codes, y: codes, z, colorscale: SCALE, zmin: 0, hoverongaps: false, xgap: 2, ygap: 2,
+        colorbar: { title: { text: t("routes.shop") }, tickformat: ".1%", thickness: 12 }, texttemplate: codes.length <= 12 ? "%{z:.1%}" : "", textfont: { size: 10 },
+        hovertemplate: `${t("routes.host")}: %{y}<br>${t("routes.home")}: %{x}<br>${t("routes.shop")}: %{z:.2%}<extra></extra>` }],
+      { xaxis: { title: { text: t("routes.home") }, type: "category", showgrid: false }, yaxis: { title: { text: t("routes.host") }, type: "category", autorange: "reversed", showgrid: false },
+        margin: { l: 80, r: 20, t: 34, b: 60 }, annotations: marks },
+      { name: "treaty_shopping_gain", columns: ["host"].concat(codes), rows: codes.map((h, i) => [h].concat(z[i])) });
+      heatNode._tnlClick = (ev) => { const p = ev.points && ev.points[0]; if (p && p.x !== p.y) { hostSel.value = p.y; homeSel.value = p.x; changed(true); } };
+      if (!heatNode._tnlBound) { heatNode.on("plotly_click", (ev) => heatNode._tnlClick && heatNode._tnlClick(ev)); heatNode._tnlBound = true; }
+      // centrality
+      const order = cent.slice().sort((a, b) => b.btwns - a.btwns);
+      plot(centNode, ["btwns", "strct", "occur"].map((m, k) => ({ type: "bar", name: t("routes.c." + m), x: order.map((r) => r.jurisdiction_id), y: order.map((r) => r[m]),
+        marker: { color: ["#ef4444", "#8b5cf6", "#14b8a6"][k] } })), { barmode: "group", yaxis: { title: { text: t("routes.axis.centrality") } }, annotations: marks },
+      { name: "conduit_centrality", columns: ["jurisdiction_id", "btwns", "strct", "occur", "unwtd"], rows: order });
+    }
+    const LEGCOLS = ["leg", "from_jurisdiction", "to_jurisdiction", "relief_method", "wht_rate", "wht_basis", "payer_cit_used", "payer_cit_basis", "recipient_cit", "d_leg"];
+
+    async function sweep(kind) {
+      if (R.host === R.home) return toast(t("routes.same_host_home"));
+      const xs = [], direct = [], best = [], conduits = [];
+      const target = kind === "treaty" ? { kind: "treaty", payer: R.payer, recipient: R.recipient } : { kind, jurisdiction: R.adjust };
+      const hi = kind === "cit" ? 0.6 : 0.4;
+      sweepNode.replaceChildren(el("p", { class: "muted small", text: t("routes.computing") }));
+      try {
+        for (let i = 0; i <= 24; i++) {
+          const x = Math.round((hi * i / 24) * 10000) / 10000;
+          const ov = R.overrides.filter((o) => !(o.kind === target.kind && o.jurisdiction === target.jurisdiction && o.payer === target.payer && o.recipient === target.recipient));
+          ov.push(Object.assign({}, target, { value: x }));
+          const res = await api("POST", `engines/${ROUTE_ENGINE}/preview`, { dataset_id: S.datasetId, parameters: params({ overrides: ov.map((o) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined))) }) });
+          if (!res.executed) { sweepNode.replaceChildren(issuesList(res.validation)); return; }
+          const q = res.outputs.pairs.find((p) => p.host === R.host && p.home === R.home);
+          xs.push(x); direct.push(q ? q.direct_te : null); best.push(q ? q.best_te : null); conduits.push(q ? q.best_route.split(">").slice(1, -1).join(" → ") || t("routes.direct") : "");
+        }
+      } catch (e) { fail(e); return; }
+      sweepNode.replaceChildren();
+      const label = kind === "treaty" ? `${t("routes.ov.treaty")} ${R.payer} → ${R.recipient}` : `${t("routes.ov." + kind)} ${R.adjust}`;
+      plot(sweepNode, [
+        { type: "scatter", mode: "lines", name: t("routes.direct"), x: xs, y: direct, line: { color: "#94a3b8", width: 2.5, dash: "dash" } },
+        { type: "scatter", mode: "lines+markers", name: t("routes.best"), x: xs, y: best, text: conduits, line: { color: "#ef4444", width: 3 },
+          marker: { size: 7, color: best, colorscale: SCALE }, hovertemplate: "%{x:.1%} → %{y:.2%}<br>%{text}<extra></extra>" }],
+      { xaxis: { title: { text: label }, tickformat: ".0%" }, yaxis: { title: { text: t("routes.axis.te") }, tickformat: ".0%" },
+        annotations: watermark([t("wm.exploratory"), t("wm.unverified"), statusWatermark()]) },
+      { name: `sweep_${kind}`, columns: ["x", "direct_te", "best_te", "best_route_intermediates"], rows: xs.map((x, i) => [x, direct[i], best[i], conduits[i]]) });
+    }
+
+    async function pin() {
+      pinBtn.disabled = true;
+      try {
+        const res = await api("POST", "runs", { engine_id: ROUTE_ENGINE, dataset_id: S.datasetId, parameters: params(), research_question: question.value });
+        if (!res.executed) { toast(t("runs.blocked")); return; }
+        toast(t("routes.pinned", { id: res.record.run_id }));
+      } catch (e) { fail(e); } finally { pinBtn.disabled = false; }
+    }
+    function kpi(label, value, colour) { return el("div", { class: "card kpi", style: "--c:" + colour }, [el("div", { class: "value", text: value }), el("div", { class: "label", text: label })]); }
+    syncControls();
+    await compute();
+  };
+
   // ------------------------------------------------------------------ data
-  const TABLES = ["sources", "jurisdictions", "jurisdiction_attributes", "entities", "ownership", "illustrative_tax_edges"];
+  const TABLES = ["sources", "jurisdictions", "jurisdiction_attributes", "entities", "ownership", "illustrative_tax_edges",
+    "tax_domestic", "tax_treaty_dividends", "tax_relief_overrides"];
   PAGES.data = async function (root) {
     header(root, "data.title", "data.lede");
     if (S.dataset) {
@@ -488,7 +777,9 @@
         if (p.type === "choice") { inp = el("select", { class: "select" }, p.choices.map((c) => el("option", { value: c, text: tOr("choice." + c, c) }))); inp.value = p.default; }
         else if (p.type === "bool") inp = el("input", { type: "checkbox", checked: !!p.default });
         else if (p.type === "date") inp = el("input", { type: "date", value: p.default || "" });
-        else inp = el("input", { type: "number", value: p.default, min: p.minimum, max: p.maximum });
+        else if (p.type === "text") inp = el("input", { type: "text", value: p.default || "" });
+        else if (p.type === "overrides") inp = el("textarea", { class: "mono", rows: 2, text: JSON.stringify(p.default || []) });
+        else inp = el("input", { type: "number", value: p.default, min: p.minimum, max: p.maximum, step: p.type === "int" ? 1 : "any" });
         inputs[p.name] = { p, inp };
         return el("label", { class: "field", title: p.description }, [el("span", { text: tOr("param." + p.name, p.name) }), inp]);
       }));
@@ -500,7 +791,13 @@
       btn.disabled = true;
       try {
         const parameters = {};
-        for (const [k, { p, inp }] of Object.entries(inputs)) parameters[k] = p.type === "bool" ? inp.checked : p.type === "float" || p.type === "int" ? Number(inp.value) : inp.value;
+        for (const [k, { p, inp }] of Object.entries(inputs)) {
+          if (p.type === "bool") parameters[k] = inp.checked;
+          else if (p.type === "float" || p.type === "int") parameters[k] = Number(inp.value);
+          else if (p.type === "overrides") { try { parameters[k] = JSON.parse(inp.value || "[]"); } catch (e) { toast(t("runs.bad_json", { name: k })); return; } }
+          else if (p.type === "text" || p.type === "date") parameters[k] = inp.value === "" ? null : inp.value;
+          else parameters[k] = inp.value;
+        }
         const res = await api("POST", "runs", { engine_id: engineSel.value, dataset_id: S.datasetId, parameters, research_question: question.value });
         if (!res.executed) { result.replaceChildren(el("div", { class: "card" }, [el("p", { class: "err-text", i18n: "runs.blocked" }), issuesList(res.validation)])); return; }
         showRun(result, res.record, res.outputs);
@@ -544,15 +841,25 @@
     ];
     if (rec.warnings.length) parts.push(el("ul", { class: "small" }, rec.warnings.map((w) => el("li", { text: w }))));
     for (const [name, out] of Object.entries(outputs || {})) {
+      if (!out.columns.includes("jurisdiction_id")) {
+        parts.push(el("h2", { style: "margin-top:16px", text: tOr("output." + name, name) }),
+          renderTable(out.columns, out.rows.slice(0, 500)),
+          out.rows.length > 500 ? el("p", { class: "muted small", text: t("data.truncated", { shown: 500, total: out.rows.length }) }) : "",
+          el("div", { class: "btn-row", style: "margin-top:8px" }, [el("a", { class: "btn btn-ghost", href: `/api/runs/${rec.run_id}/outputs/${name}.csv`, i18n: "runs.download_output" })]));
+        continue;
+      }
       const numeric = out.columns.filter((c) => out.rows.length && out.rows.every((r) => typeof r[c] === "number"));
-      const linkCols = numeric.filter((c) => c.endsWith("_links")), valueCols = numeric.filter((c) => !c.endsWith("_links"));
+      let linkCols = numeric.filter((c) => c.endsWith("_links")), valueCols = numeric.filter((c) => !c.endsWith("_links"));
+      if (!linkCols.length) { linkCols = valueCols; valueCols = []; }
       const p1 = el("div", { class: "plot" }), p2 = el("div", { class: "plot" });
       parts.push(el("h2", { style: "margin-top:16px", text: tOr("output." + name, name) }), el("div", { class: "grid grid-2" }, [p1, p2]));
       const x = out.rows.map((r) => r.jurisdiction_id);
       const marks = watermark([isDemo ? t("wm.demonstration") : !verified ? t("wm.unverified") : null, rec.dataset.data_status === "synthetic" ? t("wm.synthetic") : null]);
-      const cols = (list) => list.map((c, k) => ({ type: "bar", name: tOr("measure.demo." + c, c), x, y: out.rows.map((r) => r[c]), marker: { color: PALETTE[(k + (list === valueCols ? 3 : 0)) % PALETTE.length] } }));
+      const ns = rec.engine.engine_id.split(".")[0];
+      const cols = (list) => list.map((c, k) => ({ type: "bar", name: tOr("measure." + ns + "." + c, tOr("col." + c, c)), x, y: out.rows.map((r) => r[c]), marker: { color: PALETTE[(k + (list === valueCols ? 3 : 0)) % PALETTE.length] } }));
       setTimeout(() => {
-        plot(p1, cols(linkCols), { barmode: "group", annotations: marks, yaxis: { title: { text: t("runs.axis.links") } } }, { name: `${rec.run_id}_${name}_links`, columns: ["jurisdiction_id"].concat(linkCols), rows: out.rows });
+        plot(p1, cols(linkCols), { barmode: "group", annotations: marks, yaxis: { title: { text: valueCols.length ? t("runs.axis.links") : "" } } }, { name: `${rec.run_id}_${name}`, columns: ["jurisdiction_id"].concat(linkCols), rows: out.rows });
+        if (!valueCols.length) { p2.remove(); return; }
         plot(p2, cols(valueCols).map((tr) => (tr.name === tOr("measure.demo.net_outbound_value", "net_outbound_value")
           ? Object.assign(tr, { type: "bar", marker: { color: out.rows.map((r) => (r.net_outbound_value >= 0 ? "#22c55e" : "#ef4444")) } }) : tr)),
         { barmode: "group", annotations: marks, yaxis: { title: { text: t("runs.axis.value") } }, showlegend: true }, { name: `${rec.run_id}_${name}_values`, columns: ["jurisdiction_id"].concat(valueCols), rows: out.rows });

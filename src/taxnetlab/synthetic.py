@@ -140,14 +140,55 @@ def generate(
                     "rule_status": "synthetic_assumption", "source_id": SYNTHETIC_SOURCE["source_id"],
                 })
 
+    domestic, treaties = _synthetic_tax_rules(rng, codes, hub)
+
     tables = {"sources": [dict(SYNTHETIC_SOURCE)], "jurisdictions": jurisdictions,
               "jurisdiction_attributes": attributes, "entities": entities, "ownership": ownership,
-              "illustrative_tax_edges": tax_edges}
+              "illustrative_tax_edges": tax_edges, "tax_domestic": domestic, "tax_treaty_dividends": treaties}
     label = name or f"Synthetic world (seed {params['seed']})"
     dataset, report = Dataset.from_rows(label, tables, {"origin": "synthetic_generator", "generator": params})
     if dataset is None:  # a generator bug, not a user error
         raise ValidationError(report, "synthetic generator produced an invalid dataset")
     return dataset
+
+
+TAX_PERIOD = "2025"
+
+
+def _synthetic_tax_rules(rng: random.Random, codes: list[str], hub: str) -> tuple[list[dict], list[dict]]:
+    """Fictional statutory rates, relief methods and a sparse directional treaty network.
+
+    The hub jurisdiction is given conduit-like features (exemption, no outbound withholding, many
+    treaties), so that synthetic worlds contain routes worth exploring. Every row is a synthetic
+    assumption about a fictional jurisdiction.
+    """
+    src = SYNTHETIC_SOURCE["source_id"]
+    domestic = []
+    for c in codes:
+        if c == hub:
+            cit, wht, relief = 0.25, 0.0, "exemption"
+        else:
+            cit = rng.choice([0.10, 0.15, 0.20, 0.25, 0.30, 0.35])
+            wht = rng.choice([0.0, 0.05, 0.10, 0.15, 0.20, 0.30])
+            relief = rng.choices(["exemption", "credit", "deduction"], weights=(5, 4, 1))[0]
+        domestic.append({"jurisdiction_id": f"FIC_{c}", "period": TAX_PERIOD, "cit_rate": cit,
+                         "dividend_wht_rate": wht, "relief_method": relief, "rule_status": "synthetic_assumption",
+                         "verified": False, "source_id": src, "note": "synthetic"})
+    general = {f"FIC_{d['jurisdiction_id'][4:]}": d["dividend_wht_rate"] for d in domestic}
+    treaties = []
+    for a in codes:
+        for b in codes:
+            if a == b:
+                continue
+            likely = 0.85 if hub in (a, b) else 0.35
+            if rng.random() < likely:
+                cap = general[f"FIC_{a}"]
+                rate = min(cap, rng.choice([0.0, 0.0, 0.05, 0.10, 0.15]))
+                treaties.append({"payer_jurisdiction": f"FIC_{a}", "recipient_jurisdiction": f"FIC_{b}",
+                                 "period": TAX_PERIOD, "dividend_wht_rate": rate,
+                                 "rule_status": "synthetic_assumption", "verified": False, "source_id": src,
+                                 "note": "synthetic"})
+    return domestic, treaties
 
 
 def build_0_1_fixture() -> Dataset:

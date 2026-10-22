@@ -97,6 +97,21 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
 
 .plot { width: 100%; height: 440px; }
 .plot.tall { height: 620px; }
+.plot.short { height: 340px; }
+.live-grid { display: grid; grid-template-columns: minmax(280px, 340px) minmax(0, 1fr); gap: 18px; align-items: start; }
+.live-panel { position: sticky; top: 74px; max-height: calc(100vh - 92px); overflow: auto; }
+.live-panel h2 { margin-top: 4px; }
+.live-panel .field { margin-bottom: 10px; }
+.slider-row { display: flex; align-items: center; gap: 10px; }
+.slider { flex: 1; accent-color: var(--accent); min-width: 0; }
+.slider-row output { width: 72px; text-align: end; color: var(--text); white-space: nowrap; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 8px; }
+.chip-ov { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; padding: 3px 4px 3px 10px; border-radius: 999px;
+  background: var(--accent-soft); color: var(--accent); }
+.chip-x { border: 0; background: transparent; color: inherit; cursor: pointer; font-size: 15px; line-height: 1; padding: 0 6px; }
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 8px; }
+.kpis .card { padding: 12px 14px; }
+.kpis .value { font-size: 20px; overflow-wrap: anywhere; }
 .legend-note { font-size: 12.5px; color: var(--muted); margin-top: 8px; }
 .side-panel { font-size: 13px; }
 .side-panel dl { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; margin: 0; }
@@ -140,4 +155,11 @@ details summary { cursor: pointer; color: var(--accent); margin: 6px 0; }
   #dataset-select { max-width: 58vw; }
   .shell { min-height: auto; }
   .grid-2 { grid-template-columns: 1fr; }
+  .live-grid { grid-template-columns: 1fr; }
+  .live-panel { position: static; max-height: none; }
+}
+
+@media (max-width: 1100px) {
+  .live-grid { grid-template-columns: 1fr; }
+  .live-panel { position: static; max-height: none; }
 }

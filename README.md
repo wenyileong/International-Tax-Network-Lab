@@ -2,7 +2,7 @@
 
 A local-first research workbench for analysing international tax and corporate ownership networks. It is built to implement published methods faithfully and keep them separate, to record exactly how every result was produced, and to let a researcher inspect, compare and export results to a standard fit for peer-reviewed work.
 
-**Release 0.2 (Phase 1 of the project plan).** Core contracts, data layer, network views, run records with replay, a minimalist offline interface and a Windows executable. The three published-method engines (Garcia-Bernardo and others; van 't Riet and Lejour; US Patent 10,417,262 B2) are registered at *interface* status and refuse to run until their specifications have been transcribed and verified. See `docs/PROJECT_PLAN_v2_1.md` and `docs/BUILD_0_2_STATUS.md`.
+**Release 0.3.** Core contracts, data layer, network views, run records with replay, a minimalist offline interface and a Windows executable (0.2), plus the **optimal tax routing engine** of van 't Riet and Lejour with **live exploration**: move a tax rate or a treaty and watch the cheapest routes, treaty-shopping gains and conduit rankings recompute. The routing engine is at *implemented* status: it passes every test against its specification, and becomes *verified* once that specification has been checked against the source paper. The other two methods (Garcia-Bernardo and others; US Patent 10,417,262 B2) remain at *interface* status. See `docs/PROJECT_PLAN_v2_2.md` and `docs/BUILD_0_3_STATUS.md`.
 
 > The data shipped with the software are synthetic. Every jurisdiction, company, value and rate is fictional. The software gives no tax or legal advice, and network position, centrality or clustering is not evidence of avoidance, misconduct or illegality.
 
@@ -43,6 +43,7 @@ A run specification is a small JSON file:
 | Overview | Size and composition of the dataset, ownership-fraction distribution, validation report. |
 | Network | Ownership (holder → held), value-flow (held → holder) or jurisdiction-aggregated views. Edge colour and width show the size of each relation; node colour shows the jurisdiction. Click a node for its records. |
 | Matrix | Holder-jurisdiction by held-jurisdiction heatmap under a stated aggregation rule. |
+| Tax routes | Live explorer for the optimal tax routing model: choose a host and a home jurisdiction, change corporate tax, withholding, relief and treaty rates with sliders, and see the cheapest route, its legs, the treaty-shopping gain for every pair and conduit centrality update at once. Sweeps plot a route's tax across a rate's range. Live results are exploratory previews; "Save as run" records the state, including every change, as a replayable run. |
 | Data | Table viewer and CSV download, validation report, synthetic generator and CSV import. |
 | Runs | Execute an engine, inspect outputs, calculation trace and full record, replay, download. |
 | Methods | Every registered engine with its status, boundary and next step. |
@@ -52,7 +53,7 @@ Every chart can be downloaded as PNG, SVG or CSV. Charts and exports from synthe
 
 ## Data format
 
-A dataset is a set of CSV tables with header rows; columns are matched by name, in any order. Required tables: `sources`, `jurisdictions`, `entities`, `ownership`. Optional: `jurisdiction_attributes`, `illustrative_tax_edges`. Column definitions are in `src/taxnetlab/schema.py`; the Data page shows them for each table. Conventions:
+A dataset is a set of CSV tables with header rows; columns are matched by name, in any order. Required tables: `sources`, `jurisdictions`, `entities`, `ownership`. Optional: `jurisdiction_attributes` (GDP is used for weights), `illustrative_tax_edges`, and the tax rule tables used by the routing engine: `tax_domestic` (CIT, general dividend withholding, relief method), `tax_treaty_dividends` (directional treaty withholding) and `tax_relief_overrides` (relief for a particular partner). Legal rows carry `rule_status` and `verified` columns; unverified real-world rows are flagged on every result that uses them. Column definitions are in `src/taxnetlab/schema.py`; the Data page shows them for each table. Conventions:
 
 * shares and rates are fractions in [0, 1]; money is an amount plus an ISO 4217 currency;
 * real jurisdictions use ISO 3166-1 alpha-3 codes; fictional ones use the `FIC_` prefix;
@@ -94,8 +95,8 @@ All interface text is loaded from `src/taxnetlab/web/locales/<tag>.json`. Englis
 
 ## Project documents
 
-* `docs/PROJECT_PLAN_v2_1.md`: plan, status ladders, phases and release gates.
-* `docs/BUILD_0_2_STATUS.md`: what this release contains, the pre-build logical evaluation and test results.
+* `docs/PROJECT_PLAN_v2_2.md`: plan, status ladders, phases and release gates.
+* `docs/BUILD_0_3_STATUS.md` and `docs/BUILD_0_2_STATUS.md`: what each release contains, the pre-build logical evaluations and test results.
 * `docs/METHOD_RECONSTRUCTION_REGISTER.md`: verification checklists for the three published methods.
 * `docs/specs/`: specifications of implemented engines.
 * `CHANGELOG.md`.

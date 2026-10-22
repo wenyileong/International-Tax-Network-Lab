@@ -4,12 +4,12 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "international-tax-network-lab"
-version = "0.2.0"
+version = "0.3.0"
 description = "Local-first academic workbench for international taxation network research"
 readme = "README.md"
 requires-python = ">=3.11"
 authors = [{ name = "Leong Wen Yi" }]
-license = { text = "All rights reserved (licence to be decided; see docs/PROJECT_PLAN_v2_1.md s 4.6)" }
+license = { text = "All rights reserved (licence to be decided; see docs/PROJECT_PLAN_v2_2.md s 4.6)" }
 # The core deliberately avoids numerical and dataframe libraries so that the Windows executable
 # stays small and its behaviour is easy to audit. Notebook helpers are optional.
 dependencies = ["networkx>=3.2"]

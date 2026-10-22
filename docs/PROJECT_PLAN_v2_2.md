@@ -1,14 +1,22 @@
 # International Tax Network Lab
 ## Project Plan and Technical Roadmap
 
-**Document version:** 2.1 (supersedes 2.0 and 1.0)
+**Document version:** 2.2 (supersedes 2.1, 2.0 and 1.0)
 **Project baseline:** Build 0.1
-**Date:** 20 October 2026
+**Date:** 22 October 2026
 **Target:** a full research software product (release 1.0), delivered as a Windows executable (`.exe`), developed through verifiable intermediate releases.
 
 ---
 
 ## 0. Revision history
+
+### 0.0 Changes in version 2.2
+
+1. **Live exploration (new s 8.1).** Engine parameters and scenario variables (for example a country's corporate income tax rate or a treaty withholding rate) can be changed with sliders and switches, and the charts recompute as they move, in the manner of interactive controls in a live script. Live results are *previews*: they are labelled exploratory, are not run records, and become citable only when pinned as a run.
+2. **Engine order decided (s 10.3).** The tax routing engine (van 't Riet and Lejour) is built first, because it is the most legally intuitive, is cheap to compute at jurisdiction level, and does not depend on the feasibility questions that affect the other two methods (Orbis licensing; the patent). Phase 3 now proceeds method by method: each engine's specification precedes that engine, rather than all three specifications preceding any engine.
+3. **Separability resolved from the source (s 9.2).** The paper makes route taxation separable by assumption (a conduit's creditable corporate tax is the world average), which justifies an ordinary shortest-path search. The engine follows the paper; the path-dependent alternative becomes a possible extension.
+4. **Scenario overrides are run parameters (s 7.1).** Changes made with live controls are recorded in the run record when a state is pinned, so every pinned result can be replayed.
+5. **Specification status (s 3.1).** A specification transcribed with automated text extraction is `specified (draft)` until the author has checked the equations against the source document. An engine built on a draft specification can reach `implemented`, not `verified`.
 
 ### 0.1 Changes in version 2.1
 
@@ -333,6 +341,15 @@ Pages: Workspace, Data manager (including coding templates), Network explorer, T
 - **Model comparison:** namespaced measures with definitions side by side; agreement rule and robustness shares (section 6.3); no combined score by default.
 - **Run history:** list, filter, compare and replay runs; stale results marked.
 
+### 8.1 Live exploration (new in 2.2)
+
+- **Controls generated from the engine.** Each engine declares its parameters and the scenario variables it accepts (s 4.2); the interface builds sliders, switches and selectors from those declarations, so no method-specific control is hard-coded.
+- **Recompute on change.** Results update shortly after a control stops moving; superseded requests are discarded; recent results are cached so that returning to an earlier setting is immediate.
+- **Previews are not runs.** A preview executes the same engine code as a run but stores nothing. Every live chart carries an "exploratory" mark together with the engine's status. This reconciles live exploration with the rule that no result exists without a run record (s 11): a preview is not a result until pinned.
+- **Pinning.** "Save as run" turns the current state, including every scenario override, into an ordinary immutable run record that can be replayed.
+- **Sweeps.** Choosing one or two parameters produces a line chart or heatmap of a chosen output across a grid of values (the interactive form of the sensitivity analysis in Phase 8).
+- **Scale.** Live exploration is designed for jurisdiction-level data and synthetic worlds. Entity-level data at Orbis scale are explored through runs, not previews.
+
 ---
 
 ## 9. Engine-specific plans
@@ -354,9 +371,11 @@ Pages: Workspace, Data manager (including coding templates), Network explorer, T
 
 **Source:** Maarten van 't Riet and Arjan Lejour, 'Optimal Tax Routing: Network Analysis of FDI Diversion' (2018) 25 International Tax and Public Finance 1321. Earlier versions: CPB Discussion Paper 349 (2017) and Tilburg University discussion paper 2017-022. Differences between versions are logged; the journal version is authoritative.
 
-**Known constraints:** scope is repatriated dividends; the model includes corporate income tax, dividend withholding taxes, double tax treaties and relief methods, and computes routes that minimise tax; it derives a conduit centrality indicator, namespaced as `vtrl2018.*`. The tax-data source must be identified from the paper; if commercial, full replication is Tier B, with a source-backed public subset as the alternative.
+**Specification:** `docs/specs/vtrl2018_tax_routing.md` (v0.1, draft), transcribed from CPB Discussion Paper 349 with page references, interpretive choices and open questions.
 
-**Separability.** Determine whether total tax along a route decomposes into independent per-stage factors. Under exemption systems the retained share is plausibly a product of per-stage factors, which a logarithmic transform makes additive. Under credit systems tax at one stage may depend on tax paid earlier, so ordinary shortest-path algorithms on edge weights are not correct and a state-augmented or label-correcting search is needed. A fixture where the two approaches give different routes is required.
+**Known constraints:** scope is repatriated dividends; the model includes corporate income tax, dividend withholding taxes, double tax treaties and relief methods (exemption, credit, deduction), and computes routes that minimise tax; it derives a betweenness centrality for conduit countries and a treaty-shopping indicator, namespaced as `vtrl2018.*`. The paper uses 108 jurisdictions in 2013 with tax data from commercial tax guides (EY Worldwide Corporate Tax Guide 2013, supplemented by OECD, KPMG, Deloitte and Loyens & Loeff), so full replication is Tier B; a source-backed public subset is the alternative.
+
+**Separability (resolved in 2.2).** The paper composes taxes along a route multiplicatively, d(1,n) = 1 − Π(1 − d(k,k+1)), and makes each leg independent of the path by assuming that, where the next parent gives credit relief, the conduit's creditable corporate tax is the world average (excluding the conduit) rather than tax actually paid. Under that assumption an ordinary shortest-path search is correct. A path-dependent credit model would be an extension variant, tested against the reproduction variant with "nothing changes" tests where the two coincide.
 
 **Relief direction.** The engine uses directional `ReliefRule` entries (section 5.2): relief is granted by the receiving state for tax levied earlier in the route. A fixture with one-sided (unilateral) relief is required.
 
@@ -407,6 +426,16 @@ Each phase maps to one minor release. Phases 3 and 4 can overlap once Phase 2 is
 | 8 | 0.9 | **Comparison, sensitivity and outputs.** Model comparison page with agreement rule; sensitivity analysis with robustness shares; publication-quality figures and tables; research-run reports; export packages by reproducibility tier. | Export package for a Tier B run reproduces the run on a second Windows machine using the executable and the same licensed inputs. |
 | 9 | 1.0 | **Productisation.** Windows installer (per-user, no administrator rights) alongside the portable executable; code signing (section 11.2); user guide, method notes, API reference; error handling and logging; performance budgets met; accessibility review; release process and archived DOI. | Section 1.4 criteria met. |
 | 10 | post-1.0 | Extension variants (other income types, Pillar Two, controlled foreign company rules); patent-specific procedures if cleared; macOS bundle; optional hosted service; optional link to original models such as the JAF Rule Bench under the original-model track. | Each extension specified and verified separately, with "nothing changes" tests. |
+
+### 10.3 Revised sequence (2.2)
+
+The table in 10.2 is kept for reference. From 0.3 the order is:
+
+| Release | Content | Exit gate |
+|---|---|---|
+| 0.3 | **Tax routing, method first.** Phase 3 for van 't Riet and Lejour (specification, feasibility); the tax-rule tables needed by the reproduction variant (domestic rates and relief method, directional treaty withholding, directional relief overrides); the reference engine; live route explorer with scenario overrides and pinning. | Engine at `implemented` with every hand-calculated fixture, a brute-force differential test and property tests passing; promotion to `verified` once the author has checked the specification against the source. |
+| 0.4 | Phase 3 for Garcia-Bernardo and others and for the patent (IP gate); conduit and sink engine if feasible; reading modes. | As 10.2, Phases 3 and 4. |
+| 0.5 onwards | As 10.2, Phases 5 (remaining rule layer: eligibility, coding template), 6 to 9. | As 10.2. |
 
 **Why this order.** Contracts and the first executable (Phase 1) come before engines so that three engines do not produce three designs and packaging problems surface early, not at 1.0. Specification and feasibility for all three methods (Phase 3) precede engine work because data licensing or the patent may change which engine is worth building first. Replication sits with real data (Phase 7), so earlier gates require only `verified`.
 
@@ -459,11 +488,11 @@ Unsigned PyInstaller executables commonly trigger Windows SmartScreen warnings a
 
 ## 13. Immediate next actions
 
-1. Initialise Git and tag the unmodified Build 0.1 as `v0.1.0`.
-2. Fix the Appendix B defects, choose the licence and set up CI on Windows and Linux (Phase 0).
-3. Carry out the Phase 1 pre-build logical evaluation, covering the shared run-record schema, the engine interface and the local-server packaging.
-4. Obtain the JAF Rule Bench 1.0 read-me and specification so that the shared run-record schema and coding conventions match the current JAF build rather than 0.4.
-5. In parallel, as desk research: archive the three primary sources and start the replication-feasibility notes.
+1. Author check of `docs/specs/vtrl2018_tax_routing.md` against CPB Discussion Paper 349 (pp 7 to 10 and 13 to 18) and the journal version; resolve the open questions; promote the engine to `verified` if the fixtures still pass.
+2. Choose the licence (s 4.6); create the `v0.1.0` and `v0.3.0` tags (tag pushes are not available from the build session).
+3. Physical Windows smoke test of the CI-built executable (s 11.1).
+4. Phase 3 for the Garcia-Bernardo method and the patent IP gate (0.4).
+5. Obtain the JAF Rule Bench 1.0 read-me and specification so that the shared formats match the current JAF build.
 
 ---
 
@@ -506,6 +535,17 @@ Unsigned PyInstaller executables commonly trigger Windows SmartScreen warnings a
 | A26 | s 6 | No test that extensions leave the reproduction variant unchanged; engines could return numbers in place of failures. | s 6.3. |
 | A27 | s 7 | No freezing of expected results before replication, leaving room for post hoc tolerance choices. | Expectation register, s 7.5. |
 | A28 | s 1.4, 11 | Installation criterion did not require testing on a physical Windows machine. | Gates in s 10.1; smoke test s 11.1. |
+
+---
+
+### A.3 Issues in version 2.1 (resolved in 2.2)
+
+| # | Location in v2.1 | Issue | Resolution in 2.2 |
+|---|---|---|---|
+| A29 | s 11 (reliability), s 8 | "No run produces a result without a run record" conflicts with live exploration, which computes many states that are never recorded. | Previews are defined as non-results: labelled exploratory, not exportable as results, and citable only after pinning (s 8.1). |
+| A30 | s 10.2, Phase 3 | Requiring all three specifications before any engine delays an engine whose feasibility is independent of the others. | Method-by-method Phase 3 (s 10.3); the reason for the original rule (licensing and the patent could reorder engines) does not affect the routing engine. |
+| A31 | s 9.2 | Separability was framed as an open technical question although the source answers it by assumption. | Resolved from the source (s 9.2); path-dependent credit is an extension. |
+| A32 | s 3.1 | "Specified" did not distinguish a reviewed specification from an automated transcription. | Draft specifications cap the engine at `implemented` (s 0.0, item 5). |
 
 ---
 

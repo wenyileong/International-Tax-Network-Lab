@@ -94,7 +94,7 @@ def test_api_errors_are_json(server):
 
 def test_run_blocked_returns_validation(server):
     did = server.api.datasets()[0]["dataset_id"]
-    body = json.dumps({"engine_id": "vtrl2018.tax_routing", "dataset_id": did}).encode()
+    body = json.dumps({"engine_id": "us10417262.tda", "dataset_id": did}).encode()
     status, data = request(server, "POST", "/api/runs", body, {TOKEN_HEADER: server.token,
                                                               "Content-Type": "application/json"})
     out = json.loads(data)
@@ -122,7 +122,8 @@ def test_every_static_key_used_in_interface_exists():
 
 FAMILY_PREFIXES = ("status.", "outcome.", "table.", "rule.", "view.", "track.", "col.", "dir.", "level.", "banner.",
                    "gen.", "integrity.", "network.colour.", "overview.band.", "entity_type.", "issue.", "choice.",
-                   "param.", "output.", "measure.demo.")
+                   "param.", "output.", "measure.demo.", "relief.", "routes.basis.", "routes.c.", "routes.ov.", "routes.wa.",
+                   "routes.w.", "routes.part.", "routes.k.", "routes.")
 
 
 def test_dynamic_key_families_complete():
@@ -139,6 +140,11 @@ def test_dynamic_key_families_complete():
         "gen.": {"seed", "n_jurisdictions", "n_groups", "entities_per_group", "cross_holdings"},
         "integrity.": {"ok", "modified", "unreadable"}, "network.colour.": {"fraction", "value"},
         "overview.band.": {f"b{i}" for i in range(1, 7)}, "entity_type.": {"parent", "holding", "finance", "operating"},
+        "relief.": {"exemption", "credit", "deduction"}, "routes.ov.": {"cit", "wht", "relief", "treaty", "relief_pair"},
+        "routes.basis.": {"treaty", "general", "statutory", "world_average_excluding_conduit", "not_used"},
+        "routes.c.": {"btwns", "strct", "occur"}, "routes.wa.": {"unweighted", "gdp"}, "routes.w.": {"gdp_product", "unweighted"},
+        "param.": {p.name for e in __import__("taxnetlab.engines", fromlist=["list_engines"]).list_engines() for p in e.parameters},
+        "output.": {o for e in __import__("taxnetlab.engines", fromlist=["list_engines"]).list_engines() for o in e.outputs},
     }
     missing = [p + k for p, ks in families.items() for k in ks if p + k not in strings]
     assert not missing, missing

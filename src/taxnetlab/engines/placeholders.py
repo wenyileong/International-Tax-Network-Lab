@@ -1,4 +1,4 @@
-"""The three published-method engines, at ``interface`` status.
+"""Published-method engines still at ``interface`` status (the tax routing engine is in ``vtrl2018.py``).
 
 Each raises :class:`SpecificationNotValidatedError` until its primary-source specification has been
 transcribed and verified (plan v2.1, s 3 and s 9). They are registered so that the interface can show
@@ -20,19 +20,6 @@ class ConduitsSinksEngine(Engine):
         boundary="Generic betweenness centrality is not this measure. Consumes the value-flow view.",
         next_step="Archive the paper; transcribe chain construction, value allocation, measures and thresholds.",
         input_schema=("entities", "ownership", "jurisdiction_attributes"),
-    )
-
-
-class TaxRoutingEngine(Engine):
-    spec = EngineSpec(
-        engine_id="vtrl2018.tax_routing",
-        display_name="Optimal tax routing (van 't Riet and Lejour, 2018)",
-        track=REPRODUCTION, variant="reproduction", version="0.0.0", status="interface",
-        spec_ref="not yet specified (plan s 9.2)",
-        purpose="Routes for repatriated dividends that minimise tax under the paper's assumptions.",
-        boundary="Generic shortest paths are not this method; separability of the tax objective must be established first.",
-        next_step="Transcribe tax formulas, relief methods and route optimisation; build the directional relief layer.",
-        input_schema=("jurisdictions", "tax rules (Phase 5)"),
     )
 
 

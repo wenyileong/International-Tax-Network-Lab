@@ -108,6 +108,13 @@ def cmd_selftest(args: argparse.Namespace) -> int:
         check(api.replay(run_id)["match"], "replay reproduces output hashes")
         blocked = api.run({"engine_id": "gb2017.conduits_sinks", "dataset_id": did})
         check(not blocked["executed"], "interface-status engine is blocked")
+        overrides = [{"kind": "cit", "jurisdiction": "FIC_A", "value": 0.4}]
+        prev = api.preview("vtrl2018.tax_routing", did, {"overrides": overrides})
+        check(prev["executed"] and prev["outcome"] == "ok" and prev["exploratory"], "tax routing live preview computes")
+        check(all(r["best_te"] <= r["direct_te"] + 1e-12 for r in prev["outputs"]["pairs"]),
+              "cheapest route never dearer than the direct route")
+        pinned = api.run({"engine_id": "vtrl2018.tax_routing", "dataset_id": did, "parameters": {"overrides": overrides}})
+        check(pinned["executed"] and api.replay(pinned["record"]["run_id"])["match"], "pinned tax routing run replays")
 
         server = AppServer(api, find_port(18766))
         t = threading.Thread(target=server.serve_forever, daemon=True)
