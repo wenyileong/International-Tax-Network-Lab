@@ -33,6 +33,11 @@ LICENCE_CLASSES = ("public", "public_attribution", "licensed_no_redistribution",
 RULE_STATUSES = ("source_backed", "derived", "synthetic_assumption")
 RELIEF_METHODS = ("exemption", "credit", "deduction")
 CONSOLIDATION = ("unconsolidated", "deconsolidated", "consolidated")
+#: Conditions on treaty benefits (plan s 5.2). Mechanical conditions are evaluated against scenario facts;
+#: judgement-based or unmodelled conditions are ``indeterminate`` unless a scenario assumption resolves them.
+MECHANICAL_CONDITIONS = ("min_holding", "min_holding_days", "subject_to_tax")
+ASSUMPTION_CONDITIONS = ("beneficial_ownership", "ppt", "lob")
+TREATY_CONDITIONS = MECHANICAL_CONDITIONS + ASSUMPTION_CONDITIONS
 RATE_MAX = 0.9999  # a rate of 100% would make every later formula degenerate
 
 STR, FLOAT, BOOL, DATE = "str", "float", "bool", "date"
@@ -223,6 +228,26 @@ SCHEMAS: dict[str, TableSchema] = {
         "taxing jurisdiction, where it differs from its general method (plan s 5.2).",
         added_in=2,
     ),
+    "tax_treaty_conditions": TableSchema(
+        "tax_treaty_conditions",
+        (
+            _c("payer_jurisdiction", req=True, null=False, identifier=True),
+            _c("recipient_jurisdiction", req=True, null=False, identifier=True),
+            _c("period", req=True, null=False),
+            _c("condition", req=True, null=False, choices=TREATY_CONDITIONS),
+            _c("threshold", FLOAT, minimum=0.0),
+            _c("pinpoint"),
+            _c("rule_status", req=True, null=False, choices=RULE_STATUSES),
+            _c("verified", BOOL, req=True, null=False),
+            _c("source_id", req=True, null=False, identifier=True),
+            _c("note"),
+        ),
+        ("payer_jurisdiction", "recipient_jurisdiction", "period", "condition"),
+        "Conditions on the treaty rate in tax_treaty_dividends: minimum holding (fraction), minimum holding period "
+        "(days), subject-to-tax (recipient rate above the threshold), and the beneficial ownership, principal purpose "
+        "and limitation-on-benefits tests, which stay indeterminate unless a scenario assumption resolves them.",
+        added_in=2,
+    ),
     "entity_financials": TableSchema(
         "entity_financials",
         (
@@ -242,8 +267,9 @@ SCHEMAS: dict[str, TableSchema] = {
 
 #: Tables in dependency order (referenced tables first).
 TABLE_ORDER = ("sources", "jurisdictions", "jurisdiction_attributes", "entities", "ownership", "illustrative_tax_edges",
-               "tax_domestic", "tax_treaty_dividends", "tax_relief_overrides", "entity_financials")
-TAX_TABLES = ("tax_domestic", "tax_treaty_dividends", "tax_relief_overrides")
+               "tax_domestic", "tax_treaty_dividends", "tax_relief_overrides", "entity_financials",
+               "tax_treaty_conditions")
+TAX_TABLES = ("tax_domestic", "tax_treaty_dividends", "tax_relief_overrides", "tax_treaty_conditions")
 REQUIRED_TABLES = ("sources", "jurisdictions", "entities", "ownership")
 
 _TRUE = {"true", "1", "yes", "y", "t"}

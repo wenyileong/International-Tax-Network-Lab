@@ -151,7 +151,8 @@ def generate(
     tables = {"sources": [dict(SYNTHETIC_SOURCE)], "jurisdictions": jurisdictions,
               "jurisdiction_attributes": attributes, "entities": entities, "ownership": ownership,
               "illustrative_tax_edges": tax_edges, "tax_domestic": domestic, "tax_treaty_dividends": treaties,
-              "entity_financials": financials}
+              "entity_financials": financials,
+              "tax_treaty_conditions": _synthetic_conditions(params["seed"], treaties, hub)}
     label = name or f"Synthetic world (seed {params['seed']})"
     dataset, report = Dataset.from_rows(label, tables, {"origin": "synthetic_generator", "generator": params})
     if dataset is None:  # a generator bug, not a user error
@@ -160,6 +161,31 @@ def generate(
 
 
 TAX_PERIOD = "2025"
+
+
+def _synthetic_conditions(seed: int, treaties: list[dict], hub: str) -> list[dict]:
+    """Fictional conditions on treaty rates (release 0.6). A separate random stream is used, so that every
+    other synthetic table for a seed is unchanged from earlier releases. Treaties with the hub as recipient
+    carry anti-abuse conditions, so that the eligibility modes visibly change conduit routes."""
+    rng = random.Random(f"conditions-{seed}")
+    src = SYNTHETIC_SOURCE["source_id"]
+    rows = []
+
+    def add(t: dict, condition: str, threshold: float | None) -> None:
+        rows.append({"payer_jurisdiction": t["payer_jurisdiction"], "recipient_jurisdiction": t["recipient_jurisdiction"],
+                     "period": t["period"], "condition": condition, "threshold": threshold, "pinpoint": None,
+                     "rule_status": "synthetic_assumption", "verified": False, "source_id": src, "note": "synthetic"})
+
+    for t in treaties:
+        if rng.random() < 0.6:
+            add(t, "min_holding", rng.choice([0.05, 0.10, 0.25]))
+        if rng.random() < 0.3:
+            add(t, "min_holding_days", rng.choice([183.0, 365.0]))
+        if t["recipient_jurisdiction"] == f"FIC_{hub}" or rng.random() < 0.25:
+            add(t, "ppt", None)
+        if t["recipient_jurisdiction"] == f"FIC_{hub}" and rng.random() < 0.5:
+            add(t, "beneficial_ownership", None)
+    return rows
 
 
 def _synthetic_tax_rules(rng: random.Random, codes: list[str], hub: str) -> tuple[list[dict], list[dict]]:

@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.6.0 (22 October 2026)
+
+Plan v2.5. See `docs/BUILD_0_6_STATUS.md`.
+
+* Treaty conditions (`tax_treaty_conditions`) and tri-state eligibility; tax routing modes `strict` and `contingent` (the default still reproduces the source).
+* Legal coding templates (illustrative and real-sample) with a three-layer data dictionary; ZIP import; CLI `template` and `import`.
+* Model comparison engine (`compare.models`) and Compare page: agreement rule, robustness shares, rank correlations.
+* Author check pack and verification records; `verified` status now requires a completed record.
+* Approved-output snapshots; exact floating-point summation so that results hash identically under Python 3.11 and 3.12.
+* Fixed: the Data page did not list the revenue table.
+* Synthetic worlds now include fictional treaty conditions (a new table, so dataset ids for a seed change; other tables are unchanged).
+
 ## 0.5.0 (22 October 2026)
 
 Plan v2.4. See `docs/BUILD_0_5_STATUS.md`.

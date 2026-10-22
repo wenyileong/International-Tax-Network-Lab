@@ -20,7 +20,7 @@ import sys
 import threading
 import traceback
 import webbrowser
-from http import HTTPStatus
+import zipfile
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
@@ -218,6 +218,11 @@ class Handler(BaseHTTPRequestHandler):
             if len(p) == 3 and p[0] == "datasets" and p[2] == "matrix":
                 return self._json(200, api.matrix(p[1], _q(qs, "rule", "count"), _q(qs, "as_of"),
                                                   _bool(qs, "include_domestic", True)))
+            if len(p) == 2 and p[0] == "templates" and p[1] in ("illustrative.zip", "real_sample.zip"):
+                kind = p[1][:-4]
+                cands = [c for c in (_q(qs, "jurisdictions") or "").split(",") if c.strip()] or None
+                return self._send(200, api.template(kind, cands), "application/zip",
+                                  {"Content-Disposition": f'attachment; filename="taxnetlab_{kind}_template.zip"'})
             if p == ["runs"]:
                 return self._json(200, api.runs())
             if len(p) == 2 and p[0] == "runs":
@@ -241,6 +246,18 @@ class Handler(BaseHTTPRequestHandler):
                 if not isinstance(tables, dict):
                     raise ValueError("'tables' must map table names to CSV text")
                 return self._json(200, api.import_csv(str(body.get("name") or ""), tables))
+            if p == ["datasets", "import_zip"]:
+                import base64
+                import binascii
+
+                try:
+                    data = base64.b64decode(str(body.get("zip_base64") or ""), validate=True)
+                except binascii.Error:
+                    raise ValueError("'zip_base64' must be base64 text") from None
+                try:
+                    return self._json(200, api.import_zip(str(body.get("name") or ""), data))
+                except zipfile.BadZipFile:
+                    raise ValueError("the file is not a ZIP archive") from None
             if p == ["runs"]:
                 return self._json(200, api.run(body))
             if len(p) == 3 and p[0] == "engines" and p[2] == "preview":

@@ -14,6 +14,7 @@ from typing import Any
 from taxnetlab import STORAGE_SCHEMA_VERSION
 from taxnetlab.canonical import canonical_csv, combine_hashes, sha256_text
 from taxnetlab.schema import (
+    ASSUMPTION_CONDITIONS,
     CURRENCY_RE,
     FICTIONAL_PREFIX,
     ISO3_RE,
@@ -253,6 +254,24 @@ class Dataset:
             check_rule_row("tax_treaty_dividends", n, row, ("payer_jurisdiction", "recipient_jurisdiction"))
         for n, row in enumerate(t["tax_relief_overrides"], start=1):
             check_rule_row("tax_relief_overrides", n, row, ("relieving_jurisdiction", "taxing_jurisdiction"))
+
+        treaties = {(x["payer_jurisdiction"], x["recipient_jurisdiction"], x["period"]) for x in t["tax_treaty_dividends"]}
+        for n, row in enumerate(t["tax_treaty_conditions"], start=1):
+            check_rule_row("tax_treaty_conditions", n, row, ("payer_jurisdiction", "recipient_jurisdiction"))
+            key = (row["payer_jurisdiction"], row["recipient_jurisdiction"], row["period"])
+            if key not in treaties:
+                r.warning("condition_without_treaty", "condition for a pair and period with no treaty rate; it has no effect",
+                          table="tax_treaty_conditions", row=n, params={"id": " > ".join(key[:2])})
+            cond, thr = row["condition"], row.get("threshold")
+            if cond in ("min_holding", "min_holding_days") and thr is None:
+                r.error("threshold_required", f"condition '{cond}' needs a threshold", table="tax_treaty_conditions",
+                        row=n, column="threshold", params={"condition": cond})
+            elif cond in ("min_holding", "subject_to_tax") and thr is not None and thr >= 1:
+                r.error("threshold_out_of_range", f"'{cond}' threshold is a fraction below 1", table="tax_treaty_conditions",
+                        row=n, column="threshold", params={"condition": cond})
+            elif cond in ASSUMPTION_CONDITIONS and thr is not None:
+                r.warning("threshold_ignored", f"'{cond}' takes no threshold; it is ignored", table="tax_treaty_conditions",
+                          row=n, column="threshold", params={"condition": cond})
 
         for n, f in enumerate(t["entity_financials"], start=1):
             e = entities.get(f["entity_id"])

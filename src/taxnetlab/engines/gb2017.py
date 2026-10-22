@@ -53,10 +53,10 @@ def _gdp(dataset: Dataset, period: str) -> dict[str, float]:
 
 
 def _entropy(values: list[float]) -> float | None:
-    total = sum(values)
+    total = math.fsum(values)
     if total <= 0:
         return None
-    return -sum((v / total) * math.log(v / total) for v in values if v > 0) + 0.0
+    return -math.fsum((v / total) * math.log(v / total) for v in values if v > 0) + 0.0
 
 
 class ConduitsSinksEngine(Engine):
@@ -156,7 +156,7 @@ class ConduitsSinksEngine(Engine):
             raw[o["held_id"]][o["holder_id"]] += o["fraction"]
         owners: dict[str, list[tuple[str, float]]] = {}
         for held, holders in raw.items():
-            total = sum(holders.values())
+            total = math.fsum(holders.values())
             if total <= 0:
                 continue
             scale = (1.0 / total) if params["normalise_missing_shareholders"] else 1.0
@@ -211,12 +211,12 @@ class ConduitsSinksEngine(Engine):
         jurisdictions = [j["jurisdiction_id"] for j in dataset.tables["jurisdictions"]]
         gdp_all = _gdp(dataset, params["period"])
         gdp = {j: gdp_all.get(j) for j in jurisdictions}
-        gdp_total = sum(v for v in gdp.values() if v and v > 0)
+        gdp_total = math.fsum(v for v in gdp.values() if v and v > 0)
         share = {j: (gdp[j] / gdp_total if gdp[j] and gdp_total else None) for j in jurisdictions}
 
         g2 = {seq: v for seq, v in chains.items() if len(seq) == 2}
         g3 = {seq: v for seq, v in chains.items() if len(seq) == 3}
-        t2 = sum(g2.values())
+        t2 = math.fsum(g2.values())
         vin: dict[str, float] = defaultdict(float)
         vout: dict[str, float] = defaultdict(float)
         for (a, b), v in g2.items():
@@ -235,9 +235,9 @@ class ConduitsSinksEngine(Engine):
 
         s1 = {seq: v for seq, v in g3.items() if seq[0] in sinks}
         s3 = {seq: v for seq, v in g3.items() if seq[2] in sinks}
-        all3 = sum(g3.values())
-        d_in = sum(s1.values()) if params["conduit_denominator"] == "subset_total" else all3
-        d_out = sum(s3.values()) if params["conduit_denominator"] == "subset_total" else all3
+        all3 = math.fsum(g3.values())
+        d_in = math.fsum(s1.values()) if params["conduit_denominator"] == "subset_total" else all3
+        d_out = math.fsum(s3.values()) if params["conduit_denominator"] == "subset_total" else all3
         through_in: dict[str, float] = defaultdict(float)
         through_out: dict[str, float] = defaultdict(float)
         dest_in: dict[str, dict[str, float]] = defaultdict(lambda: defaultdict(float))

@@ -428,7 +428,11 @@
     const saved = (() => { try { return JSON.parse(recall("routes." + S.datasetId) || "null"); } catch (e) { return null; } })();
     const R = Object.assign({ period: periods[periods.length - 1], host: null, home: null, adjust: null, payer: null, recipient: null,
       settings: { penalty: defaults.penalty, tolerance: defaults.tolerance, max_intermediates: defaults.max_intermediates,
-        world_average: defaults.world_average, centrality_weights: defaults.centrality_weights }, overrides: [] }, saved || {});
+        world_average: defaults.world_average, centrality_weights: defaults.centrality_weights }, overrides: [],
+      elig: { eligibility: defaults.eligibility, holding_fraction: defaults.holding_fraction, holding_days: defaults.holding_days,
+        assume_beneficial_ownership: defaults.assume_beneficial_ownership, assume_ppt: defaults.assume_ppt, assume_lob: defaults.assume_lob } }, saved || {});
+    if (!R.elig) R.elig = { eligibility: defaults.eligibility, holding_fraction: defaults.holding_fraction, holding_days: defaults.holding_days,
+      assume_beneficial_ownership: defaults.assume_beneficial_ownership, assume_ppt: defaults.assume_ppt, assume_lob: defaults.assume_lob };
     if (!periods.includes(R.period)) R.period = periods[periods.length - 1];
     const codesFor = (per) => dom.filter((r) => r.period === per).map((r) => r.jurisdiction_id).sort();
     let codes = codesFor(R.period);
@@ -472,6 +476,17 @@
     const pinBtn = el("button", { class: "btn", i18n: "routes.pin", onclick: pin });
     const field = (key, ...kids) => el("label", { class: "field" }, [el("span", { i18n: key }), ...kids]);
     const row = (...kids) => el("div", { class: "slider-row" }, kids);
+    // Treaty conditions (rule layer, docs/specs/eligibility.md): the source assumes every treaty benefit applies.
+    const assumeSel = (v) => sel(["unresolved", "met", "not_met"], v, (x) => t("choice." + x));
+    const elig = {
+      eligibility: sel(["assume_eligible", "strict", "contingent"], R.elig.eligibility, (v) => t("choice." + v)),
+      holding_fraction: slider(0, 1, 0.01), holding_days: el("input", { type: "number", min: 0, max: 36500, step: 1, value: R.elig.holding_days }),
+      assume_beneficial_ownership: assumeSel(R.elig.assume_beneficial_ownership), assume_ppt: assumeSel(R.elig.assume_ppt), assume_lob: assumeSel(R.elig.assume_lob),
+    };
+    elig.holding_fraction.value = R.elig.holding_fraction;
+    const holdV = el("output", { class: "mono" });
+    const eligFacts = el("div", {}, [field("param.holding_fraction", row(elig.holding_fraction, holdV)), field("param.holding_days", elig.holding_days),
+      field("param.assume_beneficial_ownership", elig.assume_beneficial_ownership), field("param.assume_ppt", elig.assume_ppt), field("param.assume_lob", elig.assume_lob)]);
 
     const controls = el("div", { class: "card live-panel" }, [
       el("h2", { i18n: "routes.route" }),
@@ -484,6 +499,8 @@
       el("label", { class: "field inline" }, [treatyOn, el("span", { i18n: "routes.treaty_exists" })]),
       field("routes.treaty_rate", row(treatyS, treatyV)),
       el("h2", { style: "margin-top:14px", i18n: "routes.scenario" }), chips,
+      el("h2", { style: "margin-top:14px", i18n: "routes.conditions_title" }), field("param.eligibility", elig.eligibility),
+      el("p", { class: "muted small", i18n: "routes.conditions_note" }), eligFacts,
       el("details", {}, [el("summary", { i18n: "routes.settings" }),
         field("param.penalty", settings.penalty), field("param.tolerance", row(settings.tolerance, tolV)),
         field("param.max_intermediates", settings.max_intermediates), field("param.world_average", settings.world_average),
@@ -519,6 +536,8 @@
       treatyS.value = treatyOn.checked ? tv : base(R.payer).dividend_wht_rate;
       treatyV.textContent = treatyOn.checked ? pct(Number(treatyS.value)) : t("routes.no_treaty");
       tolV.textContent = pct(Number(settings.tolerance.value));
+      holdV.textContent = pct(Number(elig.holding_fraction.value));
+      eligFacts.hidden = elig.eligibility.value === "assume_eligible";
       chips.replaceChildren(...(R.overrides.length ? R.overrides.map((o, i) => el("span", { class: "chip-ov" }, [describeOv(o),
         el("button", { class: "chip-x", title: t("routes.remove"), text: "×", onclick: () => { R.overrides.splice(i, 1); changed(true); } })])) : [el("span", { class: "muted small", i18n: "routes.no_overrides" })]),
       R.overrides.length ? el("button", { class: "btn btn-ghost", i18n: "routes.reset", onclick: () => { R.overrides = []; changed(true); } }) : "");
@@ -531,13 +550,17 @@
     function params(extra) {
       return Object.assign({ period: R.period, penalty: Number(settings.penalty.value), tolerance: Number(settings.tolerance.value),
         max_intermediates: Number(settings.max_intermediates.value), world_average: settings.world_average.value,
-        centrality_weights: settings.centrality_weights.value, overrides: R.overrides.map((o) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined))) }, extra || {});
+        centrality_weights: settings.centrality_weights.value, overrides: R.overrides.map((o) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined))),
+        eligibility: elig.eligibility.value, holding_fraction: Number(elig.holding_fraction.value), holding_days: Number(elig.holding_days.value),
+        assume_beneficial_ownership: elig.assume_beneficial_ownership.value, assume_ppt: elig.assume_ppt.value, assume_lob: elig.assume_lob.value }, extra || {});
     }
     function changed(immediate) {
       R.host = hostSel.value; R.home = homeSel.value; R.adjust = adjustSel.value; R.payer = payerSel.value; R.recipient = recipientSel.value;
       if (R.period !== periodSel.value) { R.period = periodSel.value; codes = codesFor(R.period); R.overrides = []; }
       R.settings = { penalty: Number(settings.penalty.value), tolerance: Number(settings.tolerance.value),
         max_intermediates: Number(settings.max_intermediates.value), world_average: settings.world_average.value, centrality_weights: settings.centrality_weights.value };
+      R.elig = { eligibility: elig.eligibility.value, holding_fraction: Number(elig.holding_fraction.value), holding_days: Number(elig.holding_days.value),
+        assume_beneficial_ownership: elig.assume_beneficial_ownership.value, assume_ppt: elig.assume_ppt.value, assume_lob: elig.assume_lob.value };
       store("routes." + S.datasetId, JSON.stringify(R));
       syncControls();
       clearTimeout(timer);
@@ -560,6 +583,7 @@
     };
     treatyOn.addEventListener("change", treatyChanged); treatyS.addEventListener("input", treatyChanged);
     Object.values(settings).forEach((c) => c.addEventListener(c.type === "range" ? "input" : "change", () => changed()));
+    Object.values(elig).forEach((c) => c.addEventListener(c.type === "range" ? "input" : "change", () => changed(c.tagName === "SELECT")));
 
     async function compute() {
       const my = ++seq;
@@ -585,7 +609,9 @@
       else headline.replaceChildren(el("div", { class: "kpis" }, [
         kpi(t("routes.k.direct"), pct(pr.direct_te), "#94a3b8"), kpi(t("routes.k.best"), pct(pr.best_te), "#ef4444"),
         kpi(t("routes.k.gain"), pr.shop > 1e-12 ? pct(pr.shop) : "0", "#22c55e"),
-        kpi(t("routes.k.route"), pr.best_route.split(">").join(" → "), "#8b5cf6")]));
+        kpi(t("routes.k.route"), pr.best_route.split(">").join(" → "), "#8b5cf6"),
+        res.outputs.legs.some((l) => l.host === R.host && l.home === R.home && l.wht_basis === "treaty_contingent")
+          ? kpi(t("routes.k.contingent"), t("routes.k.contingent_value"), "#f59e0b") : null]));
       // route map
       const n = codes.length, pos = Object.fromEntries(codes.map((c, i) => [c, [Math.cos(Math.PI / 2 - 2 * Math.PI * i / n), Math.sin(Math.PI / 2 - 2 * Math.PI * i / n)]]));
       const gdp = Object.fromEntries((S.dataset.gdp || []).map((g) => [g.jurisdiction_id, g.value]));
@@ -1055,9 +1081,141 @@
     await compute();
   };
 
+  // ------------------------------------------------------------------ model comparison (plan s 8; spec compare_models.md)
+  const CMP_ENGINE = "compare.models";
+  PAGES.compare = async function (root) {
+    header(root, "compare.title", "compare.lede");
+    if (needDataset(root)) return;
+    const eng = S.engines.find((e) => e.engine_id === CMP_ENGINE);
+    if (!eng) return;
+    const topo = el("input", { type: "checkbox", checked: recall("compare.topology") !== "false" });
+    const measureSel = el("select", { class: "select" });
+    const status = el("p", { class: "muted small", style: "min-height:1.4em" });
+    const question = el("textarea", { rows: 2, "data-i18n-placeholder": "runs.question_ph", placeholder: t("runs.question_ph") });
+    const pinBtn = el("button", { class: "btn", i18n: "routes.pin", onclick: pin });
+    root.append(el("div", { class: "live-grid" }, [
+      el("div", { class: "card live-panel" }, [el("h2", { i18n: "topology.settings" }),
+        el("label", { class: "field inline" }, [topo, el("span", { i18n: "param.include_topology" })]),
+        el("p", { class: "muted small", i18n: "compare.readings_note" }),
+        el("div", { class: "spacer" }), status, el("p", { class: "muted small", i18n: "routes.exploratory_note" }), question,
+        el("div", { style: "height:8px" }), pinBtn]),
+      el("div", { class: "grid" }, [
+        el("div", { class: "card" }, [el("div", { class: "headline", id: "cmp-head" }), el("h2", { i18n: "compare.grid" }), guide("compare.grid"),
+          el("div", { class: "plot tall", id: "cmp-grid" })]),
+        el("div", { class: "card" }, [el("h2", { i18n: "compare.robust" }), guide("compare.robust"), el("div", { class: "plot short", id: "cmp-robust" })]),
+        el("div", { class: "card" }, [el("h2", { i18n: "compare.corr" }), guide("compare.corr"), el("div", { class: "plot tall", id: "cmp-corr" })]),
+        el("div", { class: "card" }, [el("h2", { i18n: "compare.sensitivity" }), guide("compare.sensitivity"),
+          el("label", { class: "field", style: "max-width:360px" }, [el("span", { i18n: "compare.measure" }), measureSel]), el("div", { class: "plot", id: "cmp-sens" })]),
+        el("div", { class: "card" }, [el("h2", { i18n: "compare.definitions" }), el("div", { id: "cmp-defs" })]),
+        el("div", { class: "card" }, [el("h2", { i18n: "compare.table" }), el("div", { id: "cmp-table" })]),
+      ])]));
+    let res = null, seq = 0;
+    const params = () => ({ include_topology: topo.checked });
+    topo.addEventListener("change", () => { store("compare.topology", String(topo.checked)); compute(); });
+    measureSel.addEventListener("change", () => drawSensitivity());
+    function kpiCard(label, value, colour) { return el("div", { class: "card kpi", style: "--c:" + colour }, [el("div", { class: "value", text: value }), el("div", { class: "label", text: label })]); }
+    async function compute() {
+      const my = ++seq;
+      status.textContent = t("routes.computing");
+      try {
+        const r = await api("POST", `engines/${CMP_ENGINE}/preview`, { dataset_id: S.datasetId, parameters: params() });
+        if (my !== seq) return;
+        if (!r.executed || r.outcome !== "ok") {
+          status.replaceChildren(el("span", { class: "err-text", text: r.executed ? t("outcome." + r.outcome) + "  ·  " + r.warnings.join(" ") : t("runs.blocked") }));
+          if (!r.executed) document.getElementById("cmp-table").replaceChildren(issuesList(r.validation));
+          return;
+        }
+        res = r; res.sum = Object.fromEntries(r.outputs.summary.map((x) => [x.measure, x.value]));
+        status.textContent = t("routes.status", { ms: r.cached ? t("routes.cached") : fmt(r.elapsed_ms, 0) + " ms", status: t("status." + r.status) })
+          + (r.warnings.length ? "  ·  " + r.warnings.join(" ") : "");
+        draw();
+      } catch (e) { if (my === seq) fail(e); }
+    }
+    const marks = () => watermark([t("wm.exploratory"), t("wm.unverified"), statusWatermark()]);
+    function draw() {
+      const ag = res.outputs.agreement, sum = res.sum;
+      const measures = [...new Set(ag.map((r) => r.measure))];
+      const jurs = [...new Set(ag.map((r) => r.jurisdiction_id))].sort().reverse();
+      document.getElementById("cmp-head").replaceChildren(el("div", { class: "kpis" }, [
+        kpiCard(t("compare.k.agreed"), pct(sum.share_agreed), "#22c55e"),
+        kpiCard(t("compare.k.readings"), fmt(sum.readings_run, 0), "#2563eb"),
+        kpiCard(t("compare.k.unranked"), sum.engines_unranked === "none" ? t("conduits.none") : sum.engines_unranked, "#f59e0b"),
+        kpiCard(t("compare.k.status"), t("status." + sum.lowest_engine_status), "#8b5cf6")]));
+      // agreement grid: agreed ranks coloured; ties shown as a range, uncoloured
+      const cell = (j, m) => ag.find((r) => r.jurisdiction_id === j && r.measure === m);
+      const z = jurs.map((j) => measures.map((m) => { const c = cell(j, m); return c && c.agreed ? c.rank : null; }));
+      const text = jurs.map((j) => measures.map((m) => { const c = cell(j, m); if (!c || c.rank_min === null) return "–";
+        return c.agreed ? String(c.rank) : `${c.rank_min}–${c.rank_max}`; }));
+      const n = jurs.length;
+      const gNode = document.getElementById("cmp-grid");
+      plot(gNode, [
+        { type: "heatmap", x: measures, y: jurs, z: jurs.map(() => measures.map(() => 0)), showscale: false, hoverinfo: "skip",
+          colorscale: [[0, cssVar("--line") || "#e2e8f0"], [1, cssVar("--line") || "#e2e8f0"]] },
+        { type: "heatmap", x: measures, y: jurs, z, zmin: 1, zmax: Math.max(2, n), colorscale: SCALE.map(([p, c]) => [1 - p, c]).reverse(),
+          text, texttemplate: "%{text}", hovertemplate: "%{y} · %{x}<br>" + t("compare.rank") + ": %{text}<extra></extra>", xgap: 2, ygap: 2,
+          colorbar: { title: { text: t("compare.rank") }, thickness: 12 } }],
+      { xaxis: { side: "bottom", tickangle: -30 }, yaxis: { automargin: true }, margin: { l: 70, r: 24, t: 50, b: 130 }, annotations: marks() },
+      { name: "agreement", columns: ["jurisdiction_id", "measure", "agreed", "rank", "rank_min", "rank_max", "readings", "ranked_readings", "value_default"], rows: ag });
+      // robustness shares of classifications
+      const cls = res.outputs.classification.filter((r) => r.classified_in > 0);
+      const rNode = document.getElementById("cmp-robust");
+      if (!cls.length) { Plotly.purge(rNode); rNode.replaceChildren(el("p", { class: "empty", i18n: "compare.no_classes" })); applyI18n(rNode); }
+      else {
+        if (rNode.querySelector("p.empty")) rNode.replaceChildren();
+        const kinds = ["gb2017.sink_ofc", "gb2017.conduit_ofc"], colours = { "gb2017.sink_ofc": "#ef4444", "gb2017.conduit_ofc": "#8b5cf6" };
+        const js = [...new Set(cls.map((r) => r.jurisdiction_id))].sort();
+        plot(rNode, kinds.map((k) => ({ type: "bar", name: t("compare.class." + k.split(".")[1]), x: js,
+          y: js.map((j) => (res.outputs.classification.find((r) => r.jurisdiction_id === j && r.classification === k) || {}).share || 0),
+          marker: { color: colours[k] }, hovertemplate: "%{x}: %{y:.0%}<extra></extra>" })),
+        { barmode: "group", yaxis: { tickformat: ".0%", range: [0, 1.05], title: { text: t("compare.share") } }, annotations: marks() },
+        { name: "robustness_shares", columns: ["jurisdiction_id", "classification", "classified_in", "readings", "share", "robust"], rows: res.outputs.classification });
+      }
+      // rank correlation matrix
+      const cr = res.outputs.correlation, ms = [...new Set(cr.flatMap((r) => [r.measure_a, r.measure_b]))].sort();
+      const rho = (a, b) => { if (a === b) return 1; const r = cr.find((x) => (x.measure_a === a && x.measure_b === b) || (x.measure_a === b && x.measure_b === a)); return r ? r.spearman : null; };
+      plot(document.getElementById("cmp-corr"), [{ type: "heatmap", x: ms, y: ms, z: ms.map((a) => ms.map((b) => rho(a, b))), zmin: -1, zmax: 1, colorscale: "RdBu", reversescale: true,
+        text: ms.map((a) => ms.map((b) => { const v = rho(a, b); return v === null ? "–" : fmt(v, 2); })), texttemplate: "%{text}",
+        hovertemplate: "%{y} · %{x}<br>Spearman %{text}<extra></extra>", colorbar: { title: { text: "ρ" }, thickness: 12 } }],
+      { xaxis: { tickangle: -35 }, yaxis: { automargin: true }, margin: { l: 170, r: 24, t: 50, b: 150 }, font: { size: 12.5 }, annotations: marks() },
+      { name: "rank_correlations", columns: ["measure_a", "measure_b", "n", "spearman", "kendall_tau_b"], rows: cr });
+      // sensitivity selector
+      const prev = measureSel.value;
+      measureSel.replaceChildren(...measures.map((m) => el("option", { value: m, text: m })));
+      measureSel.value = measures.includes(prev) ? prev : measures.find((m) => m.startsWith("gb2017.conduit")) || measures[0];
+      drawSensitivity();
+      // definitions side by side (from the engines' declared measures)
+      const defs = [];
+      S.engines.forEach((e) => e.measures.forEach((m) => { if (measures.includes(m.name) || (m.name === "vtrl2018.shop" && measures.includes("vtrl2018.shop_as_host")))
+        defs.push({ name: m.name, engine: e.display_name, status: t("status." + e.status), definition: m.definition, numerator: m.numerator, denominator: m.denominator, unit: m.unit, source_ref: m.source_ref }); }));
+      document.getElementById("cmp-defs").replaceChildren(renderTable(["name", "engine", "status", "definition", "numerator", "denominator", "unit", "source_ref"], defs));
+      document.getElementById("cmp-table").replaceChildren(renderTable(["jurisdiction_id", "measure", "agreed", "rank", "rank_min", "rank_max", "ranked_readings", "readings", "value_default"],
+        ag.slice().sort((a, b) => a.measure.localeCompare(b.measure) || (a.rank_min ?? 1e9) - (b.rank_min ?? 1e9))));
+    }
+    function drawSensitivity() {
+      if (!res) return;
+      const m = measureSel.value, rows = res.outputs.readings.filter((r) => r.measure === m);
+      const readings = [...new Set(rows.map((r) => r.reading))];
+      const js = [...new Set(rows.map((r) => r.jurisdiction_id))].sort();
+      plot(document.getElementById("cmp-sens"), readings.map((rd, i) => ({ type: "scatter", mode: "markers", name: rd, x: js,
+        y: js.map((j) => (rows.find((r) => r.reading === rd && r.jurisdiction_id === j) || {}).value ?? null),
+        marker: { size: 12, color: PALETTE[i % PALETTE.length], symbol: ["circle", "diamond", "square", "triangle-up"][i % 4], line: { width: 1, color: "#ffffff" } },
+        hovertemplate: "%{x}: %{y:.4f}<extra>" + rd + "</extra>" })),
+      { yaxis: { title: { text: m } }, legend: { orientation: "h", y: -0.25 }, margin: { l: 70, r: 24, t: 34, b: 90 }, annotations: marks() },
+      { name: "readings_" + m, columns: ["measure", "reading", "jurisdiction_id", "value", "rank"], rows });
+    }
+    async function pin() {
+      pinBtn.disabled = true;
+      try {
+        const r = await api("POST", "runs", { engine_id: CMP_ENGINE, dataset_id: S.datasetId, parameters: params(), research_question: question.value });
+        toast(r.executed ? t("routes.pinned", { id: r.record.run_id }) : t("runs.blocked"));
+      } catch (e) { fail(e); } finally { pinBtn.disabled = false; }
+    }
+    await compute();
+  };
+
   // ------------------------------------------------------------------ data
   const TABLES = ["sources", "jurisdictions", "jurisdiction_attributes", "entities", "ownership", "illustrative_tax_edges",
-    "tax_domestic", "tax_treaty_dividends", "tax_relief_overrides"];
+    "tax_domestic", "tax_treaty_dividends", "tax_relief_overrides", "entity_financials", "tax_treaty_conditions"];
   PAGES.data = async function (root) {
     header(root, "data.title", "data.lede");
     if (S.dataset) {
@@ -1080,7 +1238,7 @@
       root.append(el("div", { class: "spacer" }), el("div", { class: "card" }, [el("h2", { i18n: "data.validation" }), issuesList(S.dataset.validation)]));
     }
     root.append(el("div", { class: "spacer" }));
-    root.append(el("div", { class: "grid grid-2" }, [synthForm(), importForm()]));
+    root.append(el("div", { class: "grid grid-2" }, [synthForm(), importForm()]), el("div", { class: "spacer" }), codingForm());
   };
 
   function renderTable(columns, rows, onRow) {
@@ -1111,6 +1269,37 @@
     } });
     return el("div", { class: "card" }, [el("h2", { i18n: "data.synthetic_title" }), el("p", { class: "muted small", i18n: "data.synthetic_lede" }),
       el("div", { class: "controls" }, Object.entries(f).map(([k, inp]) => el("label", { class: "field" }, [el("span", { i18n: "gen." + k }), inp]))), btn, out]);
+  }
+
+  // Legal coding templates (plan s 5.4): download, code the legal fields, import the ZIP.
+  function codingForm() {
+    const cands = el("input", { type: "text", value: "NLD,LUX,IRL,GBR,USA,DEU,FRA,CHE,SGP,HKG,MYS,CHN,CYP,MLT,BEL" });
+    const zipName = el("input", { type: "text", "data-i18n-placeholder": "data.import_name", placeholder: t("data.import_name") });
+    const zipFile = el("input", { type: "file", accept: ".zip,application/zip" });
+    const out = el("div");
+    const realLink = () => "/api/templates/real_sample.zip?jurisdictions=" + encodeURIComponent(cands.value.replace(/\s+/g, ""));
+    const realBtn = el("a", { class: "btn btn-ghost", href: realLink(), download: "", i18n: "coding.real" });
+    cands.addEventListener("input", () => { realBtn.href = realLink(); });
+    const btn = el("button", { class: "btn", i18n: "coding.import", onclick: async () => {
+      const f = zipFile.files[0];
+      if (!f) { toast(t("coding.choose_file")); return; }
+      btn.disabled = true;
+      try {
+        const buf = new Uint8Array(await f.arrayBuffer());
+        let bin = ""; for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode.apply(null, buf.subarray(i, i + 0x8000));
+        const res = await api("POST", "datasets/import_zip", { name: zipName.value || f.name.replace(/\.zip$/i, ""), zip_base64: btoa(bin) });
+        out.replaceChildren(issuesList(res.validation));
+        if (res.saved) { await loadDatasets(res.dataset_id); toast(t("data.import_ok", { id: res.dataset_id })); }
+        else toast(t("data.import_blocked"));
+      } catch (e) { fail(e); } finally { btn.disabled = false; }
+    } });
+    return el("div", { class: "card" }, [el("h2", { i18n: "coding.title" }), el("p", { class: "muted small", i18n: "coding.lede" }),
+      el("div", { class: "grid grid-2" }, [
+        el("div", {}, [el("h3", { i18n: "coding.download" }),
+          el("div", { class: "btn-row" }, [el("a", { class: "btn btn-ghost", href: "/api/templates/illustrative.zip", download: "", i18n: "coding.illustrative" })]),
+          el("label", { class: "field" }, [el("span", { i18n: "coding.candidates" }), cands]), el("div", { class: "btn-row" }, [realBtn])]),
+        el("div", {}, [el("h3", { i18n: "coding.upload" }), el("label", { class: "field" }, [el("span", { i18n: "coding.name" }), zipName]),
+          el("label", { class: "field" }, [el("span", { i18n: "coding.file" }), zipFile]), btn, out])])]);
   }
 
   function importForm() {

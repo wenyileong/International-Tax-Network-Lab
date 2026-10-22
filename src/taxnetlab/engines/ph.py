@@ -28,6 +28,7 @@ from taxnetlab.engines.base import (
     Measure,
     Parameter,
 )
+from taxnetlab.engines.upstream import UpstreamError, run_upstream
 from taxnetlab.topology import Bar, betti_curve, bottleneck, classical_mds, rips_persistence
 from taxnetlab.validation import ValidationReport
 
@@ -44,8 +45,7 @@ INFLUENCE_COLUMNS = ("jurisdiction_id", "bottleneck_h0", "bottleneck_h1", "rank_
 SUMMARY_COLUMNS = ("measure", "value")
 
 
-class _Upstream(Exception):
-    pass
+_Upstream = UpstreamError
 
 
 class PersistentHomologyEngine(Engine):
@@ -140,7 +140,7 @@ class PersistentHomologyEngine(Engine):
         provenance: list[dict[str, Any]] = []
 
         def runner(engine_id: str, upstream: dict[str, Any]):
-            outputs, prov = _run_upstream(dataset, engine_id, upstream)
+            outputs, prov = run_upstream(dataset, engine_id, upstream, "these features")
             provenance.append(prov)
             if prov["status"] not in ("verified", "replicated", "replicated_with_discrepancies"):
                 warnings.append(f"Features use {engine_id} at '{prov['status']}' status (not verified).")
@@ -293,40 +293,6 @@ class PersistentHomologyEngine(Engine):
         return EngineResult(OK, {"points": point_rows, "features": feature_rows, "distances": distance_rows,
                                  "diagram": diagram_rows, "betti": betti_rows, "influence": influence_rows,
                                  "summary": summary}, trace, warnings, assumptions)
-
-
-_UPSTREAM_CACHE: dict[str, Any] = {}
-_UPSTREAM_CACHE_SIZE = 8
-
-
-def _run_upstream(dataset: Dataset, engine_id: str, params: dict[str, Any]):
-    """Run another engine for declared features. Outputs are deterministic for a content-addressed dataset,
-    engine version and parameters, so a small cache is safe (live previews would otherwise repeat it)."""
-    from taxnetlab.engines import get_engine  # imported here: the registry imports this module
-
-    engine = get_engine(engine_id)
-    key = canonical_json([dataset.dataset_id, engine_id, engine.spec.version, params])
-    if key in _UPSTREAM_CACHE:
-        return _UPSTREAM_CACHE[key]
-    value = _run_upstream_uncached(dataset, engine, engine_id, params)
-    if len(_UPSTREAM_CACHE) >= _UPSTREAM_CACHE_SIZE:
-        _UPSTREAM_CACHE.pop(next(iter(_UPSTREAM_CACHE)))
-    _UPSTREAM_CACHE[key] = value
-    return value
-
-
-def _run_upstream_uncached(dataset: Dataset, engine, engine_id: str, params: dict[str, Any]):
-    resolved, report = engine.resolve_parameters(params)
-    if report.ok:
-        report.extend(engine.validate(dataset, resolved))
-    if not report.ok:
-        raise _Upstream(f"{engine_id} cannot run for these features: "
-                        + "; ".join(i.message for i in report.errors))
-    result = engine.run(dataset, resolved)
-    if result.outcome != OK:
-        raise _Upstream(f"{engine_id} returned '{result.outcome}': " + "; ".join(result.warnings))
-    return result.outputs, {"engine_id": engine_id, "version": engine.spec.version, "status": engine.spec.status,
-                            "parameters": resolved, "outputs_sha256": sha256_text(canonical_json(result.outputs))}
 
 
 def _routing_distances(runner, params: dict[str, Any]) -> tuple[list[str], list[list[float]]]:

@@ -174,3 +174,4 @@ details summary { cursor: pointer; color: var(--accent); margin: 6px 0; }
   .live-grid { grid-template-columns: 1fr; }
   .live-panel { position: static; max-height: none; }
 }
+a.btn { text-decoration: none; display: inline-block; }

@@ -36,6 +36,7 @@ from taxnetlab.engines.base import (
     Measure,
     Parameter,
 )
+from taxnetlab.eligibility import ASSUMPTION_VALUES, INDETERMINATE, INELIGIBLE, MODES, Facts, evaluate_treaties
 from taxnetlab.schema import RATE_MAX, RELIEF_METHODS
 from taxnetlab.validation import ValidationReport
 
@@ -91,6 +92,25 @@ class _World:
                     self.relief_pair.pop(key, None)
                 else:
                     self.relief_pair[key] = value
+        # Rule layer (plan s 5.2; docs/specs/eligibility.md). In the reproduction mode every treaty rate applies,
+        # as in the source; in the other modes conditions are evaluated and benefits withdrawn as stated.
+        self.mode = params.get("eligibility", "assume_eligible")
+        self.eligibility = {}
+        self.treaty_basis: dict[tuple[str, str], str] = {}
+        if self.mode != "assume_eligible":
+            facts = Facts(params["holding_fraction"], params["holding_days"],
+                          {"beneficial_ownership": params["assume_beneficial_ownership"], "ppt": params["assume_ppt"],
+                           "lob": params["assume_lob"]})
+            self.eligibility = evaluate_treaties(dataset, self.period, facts, self.cit, self.treaty)
+            for pair, oc in self.eligibility.items():
+                if oc.status == INELIGIBLE:
+                    del self.treaty[pair]
+                    self.treaty_basis[pair] = "general_ineligible"
+                elif oc.status == INDETERMINATE and self.mode == "strict":
+                    del self.treaty[pair]
+                    self.treaty_basis[pair] = "general_indeterminate"
+                elif oc.status == INDETERMINATE:
+                    self.treaty_basis[pair] = "treaty_contingent"
         # I2: world average CIT excluding each jurisdiction.
         self.tbar: dict[str, float] = {}
         for k in self.codes:
@@ -98,16 +118,16 @@ class _World:
             if not others:
                 self.tbar[k] = self.cit[k]
             elif params["world_average"] == "gdp":
-                total = sum(self.gdp[j] for j in others)
-                self.tbar[k] = sum(self.cit[j] * self.gdp[j] for j in others) / total
+                total = math.fsum(self.gdp[j] for j in others)
+                self.tbar[k] = math.fsum(self.cit[j] * self.gdp[j] for j in others) / total
             else:
-                self.tbar[k] = sum(self.cit[j] for j in others) / len(others)
+                self.tbar[k] = math.fsum(self.cit[j] for j in others) / len(others)
         self._leg_cache: dict[tuple[str, str, bool], dict[str, Any]] = {}
 
     def withholding(self, s: str, p: str) -> tuple[float, str]:
         if (s, p) in self.treaty:
-            return self.treaty[(s, p)], "treaty"
-        return self.wht[s], "general"  # I11
+            return self.treaty[(s, p)], self.treaty_basis.get((s, p), "treaty")
+        return self.wht[s], self.treaty_basis.get((s, p), "general")  # I11
 
     def relief_of(self, p: str, s: str) -> str:
         return self.relief_pair.get((p, s), self.relief[p])  # I12
@@ -191,6 +211,20 @@ class TaxRoutingEngine(Engine):
                       description="Pair weights for BTWNS, STRCT, OCCUR and the averages (I8)."),
             Parameter("overrides", "overrides", [],
                       description="Scenario overrides: cit, wht, relief, treaty, relief_pair (spec s 9)."),
+            Parameter("eligibility", "choice", "assume_eligible", choices=MODES,
+                      description="Treaty conditions: assume every treaty rate applies (the source's assumption), or "
+                                  "evaluate tax_treaty_conditions; 'strict' withholds benefits whose eligibility is "
+                                  "indeterminate, 'contingent' grants them and flags the routes (eligibility spec s 3)."),
+            Parameter("holding_fraction", "float", 1.0, minimum=0.0, maximum=1.0, unit="share",
+                      description="Scenario fact: the parent's holding in the paying company (eligibility spec s 2)."),
+            Parameter("holding_days", "int", 365, minimum=0, maximum=36500, unit="days",
+                      description="Scenario fact: how long the holding has been held."),
+            Parameter("assume_beneficial_ownership", "choice", "unresolved", choices=ASSUMPTION_VALUES,
+                      description="Scenario assumption for the beneficial ownership condition; never resolved by default."),
+            Parameter("assume_ppt", "choice", "unresolved", choices=ASSUMPTION_VALUES,
+                      description="Scenario assumption for the principal purpose test; never resolved by default."),
+            Parameter("assume_lob", "choice", "unresolved", choices=ASSUMPTION_VALUES,
+                      description="Scenario assumption for limitation-on-benefits provisions; never resolved by default."),
         ),
         measures=(
             Measure("vtrl2018.direct_d", "Tax distance of the direct route.", "1 - (1-t^e)/(1-t_S)", "none",
@@ -381,7 +415,7 @@ class TaxRoutingEngine(Engine):
                            for c in codes]
 
         def wavg(field: str) -> float:
-            return sum(weights[(r["host"], r["home"])] * r[field] for r in pair_rows) / 100.0
+            return math.fsum(weights[(r["host"], r["home"])] * r[field] for r in pair_rows) / 100.0
 
         n = len(pair_rows)
         summary = [
@@ -400,6 +434,8 @@ class TaxRoutingEngine(Engine):
             {"measure": "avg_routes_in_range", "value": _r(sum(r["routes_in_range"] for r in pair_rows) / n)},
             {"measure": "avg_routes_strict", "value": _r(sum(r["routes_strict"] for r in pair_rows) / n)},
         ]
+        if world.mode != "assume_eligible":
+            self._eligibility_report(world, leg_rows, summary, warnings)
         trace = [
             {"step": 1, "description": "Resolve inputs", "detail": f"period {world.period}; {len(params['overrides'])} scenario override(s)",
              "result": f"{len(codes)} jurisdictions, {len(world.treaty)} treaty rates"},
@@ -417,9 +453,40 @@ class TaxRoutingEngine(Engine):
              "result": "pair weights sum to 100"},
         ]
         assumptions = ["Interpretations I1 to I14 of the specification apply.",
-                       "Dividends only; statutory rates; participation conditions assumed met (source A1 to A5)."]
+                       "Dividends only; statutory rates; participation conditions assumed met (source A1 to A5)."
+                       if world.mode == "assume_eligible" else
+                       f"Treaty conditions evaluated ({world.mode}): holding {params['holding_fraction']}, "
+                       f"{params['holding_days']} days; beneficial ownership {params['assume_beneficial_ownership']}, "
+                       f"principal purpose test {params['assume_ppt']}, limitation on benefits {params['assume_lob']}. "
+                       "This is an extension of the source, which assumes every treaty benefit applies."]
         return EngineResult(OK, {"pairs": pair_rows, "legs": leg_rows, "centrality": centrality_rows,
                                  "summary": summary}, trace, warnings, assumptions)
+
+    @staticmethod
+    def _eligibility_report(world: _World, leg_rows: list[dict[str, Any]], summary: list[dict[str, Any]],
+                            warnings: list[str]) -> None:
+        counts = {"eligible": 0, "ineligible": 0, "indeterminate": 0}
+        for oc in world.eligibility.values():
+            counts[oc.status] += 1
+        contingent = sorted({(r["host"], r["home"]) for r in leg_rows if r["wht_basis"] == "treaty_contingent"})
+        needs = sorted((pair, oc.unresolved) for pair, oc in world.eligibility.items() if oc.status == INDETERMINATE)
+        unverified = sum(oc.unverified for oc in world.eligibility.values())
+        summary.extend([
+            {"measure": "eligibility_mode", "value": world.mode},
+            {"measure": "treaties_eligible", "value": counts["eligible"]},
+            {"measure": "treaties_ineligible", "value": counts["ineligible"]},
+            {"measure": "treaties_indeterminate", "value": counts["indeterminate"]},
+            {"measure": "pairs_relying_on_assumptions", "value": len(contingent)},
+            {"measure": "indeterminate_treaties", "value": "; ".join(f"{a}>{b} ({', '.join(u)})" for (a, b), u in needs[:40])
+             + (f"; +{len(needs) - 40} more" if len(needs) > 40 else "") or "none"},
+        ])
+        if needs and world.mode == "contingent":
+            warnings.append(f"{len(contingent)} pair(s) have a cheapest route that relies on {len(needs)} treaty benefit(s) "
+                            "whose eligibility is indeterminate; they hold only if the unresolved conditions are met.")
+        if needs and world.mode == "strict":
+            warnings.append(f"{len(needs)} treaty benefit(s) with indeterminate eligibility were withheld (strict mode).")
+        if unverified:
+            warnings.append(f"{unverified} treaty condition(s) used are not verified.")
 
     # ------------------------------------------------------------------ algorithms
     @staticmethod
@@ -509,7 +576,7 @@ class TaxRoutingEngine(Engine):
         if mode == "unweighted":
             return {k: 100.0 / len(pairs) for k in pairs}
         raw = {(s, p): world.gdp[s] * world.gdp[p] for s, p in pairs}
-        total = sum(raw.values())
+        total = math.fsum(raw.values())
         return {k: 100.0 * v / total for k, v in raw.items()}
 
 

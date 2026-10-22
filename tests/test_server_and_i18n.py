@@ -123,7 +123,7 @@ def test_every_static_key_used_in_interface_exists():
 FAMILY_PREFIXES = ("status.", "outcome.", "table.", "rule.", "view.", "track.", "col.", "dir.", "level.", "banner.",
                    "gen.", "integrity.", "network.colour.", "overview.band.", "entity_type.", "issue.", "choice.",
                    "param.", "output.", "measure.demo.", "relief.", "routes.basis.", "routes.c.", "routes.ov.", "routes.wa.",
-                   "routes.w.", "routes.part.", "routes.k.", "routes.", "guide.", "conduits.", "mode.", "topology.f.")
+                   "routes.w.", "routes.part.", "routes.k.", "routes.", "guide.", "conduits.", "mode.", "topology.f.", "compare.class.")
 
 
 def test_dynamic_key_families_complete():
@@ -141,10 +141,12 @@ def test_dynamic_key_families_complete():
         "integrity.": {"ok", "modified", "unreadable"}, "network.colour.": {"fraction", "value"},
         "overview.band.": {f"b{i}" for i in range(1, 7)}, "entity_type.": {"parent", "holding", "finance", "operating"},
         "relief.": {"exemption", "credit", "deduction"}, "routes.ov.": {"cit", "wht", "relief", "treaty", "relief_pair"},
-        "routes.basis.": {"treaty", "general", "statutory", "world_average_excluding_conduit", "not_used"},
+        "routes.basis.": {"treaty", "general", "statutory", "world_average_excluding_conduit", "not_used", "general_ineligible",
+                          "general_indeterminate", "treaty_contingent"},
         "routes.c.": {"btwns", "strct", "occur"}, "routes.wa.": {"unweighted", "gdp"}, "routes.w.": {"gdp_product", "unweighted"},
         "param.": {p.name for e in __import__("taxnetlab.engines", fromlist=["list_engines"]).list_engines() for p in e.parameters},
         "output.": {o for e in __import__("taxnetlab.engines", fromlist=["list_engines"]).list_engines() for o in e.outputs},
+        "compare.class.": {"sink_ofc", "conduit_ofc"},
         "topology.f.": set(__import__("taxnetlab.features", fromlist=["CATALOGUE"]).CATALOGUE),
         "choice.": {c for e in __import__("taxnetlab.engines", fromlist=["list_engines"]).list_engines()
                     for p in e.parameters for c in (p.choices or ())},
@@ -234,3 +236,10 @@ def test_topology_feature_list_matches_catalogue():
     js = (WEB / "app.js").read_text(encoding="utf-8")
     listed = re.search(r"const PH_FEATURES = \[([^\]]+)\]", js).group(1)
     assert re.findall(r'"([a-z0-9_]+)"', listed) == list(CATALOGUE)
+
+
+def test_data_page_lists_every_table():
+    from taxnetlab.schema import TABLE_ORDER
+    js = (WEB / "app.js").read_text(encoding="utf-8")
+    listed = re.search(r"const TABLES = \[([^\]]+)\]", js).group(1)
+    assert re.findall(r'"([a-z_]+)"', listed) == list(TABLE_ORDER)

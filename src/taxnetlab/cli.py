@@ -5,6 +5,8 @@
     taxnetlab datasets
     taxnetlab run SPEC.json
     taxnetlab replay RUN_ID
+    taxnetlab template illustrative|real-sample [--jurisdictions NLD,LUX] [--out FILE]
+    taxnetlab import FILE.zip|FOLDER [--name TEXT]
     taxnetlab selftest
     taxnetlab version
 """
@@ -80,6 +82,35 @@ def cmd_replay(args: argparse.Namespace) -> int:
     return 0 if rep.get("match") else 1
 
 
+def cmd_template(args: argparse.Namespace) -> int:
+    from taxnetlab.coding import template_zip
+
+    kind = args.kind.replace("-", "_")
+    cands = [c for c in (args.jurisdictions or "").split(",") if c.strip()] or None
+    out = Path(args.out or f"taxnetlab_{kind}_template.zip")
+    out.write_bytes(template_zip(kind, cands))
+    print(f"wrote {out}")
+    return 0
+
+
+def cmd_import(args: argparse.Namespace) -> int:
+    path = Path(args.path)
+    api = _api(args)
+    if path.is_dir():
+        res = api.import_csv(args.name or path.name, {f.stem: f.read_text(encoding="utf-8-sig") for f in path.glob("*.csv")})
+    else:
+        res = api.import_zip(args.name or path.stem, path.read_bytes())
+    for issue in res["validation"]["issues"]:
+        if issue["level"] != "info":
+            print(f"  {issue['level']}: {issue['code']}: {issue['message']}" + (f" ({issue['table']} row {issue['row']})" if issue.get("table") else ""),
+                  file=sys.stderr)
+    if not res["saved"]:
+        print("Import blocked.", file=sys.stderr)
+        return 2
+    print(f"{res['dataset_id']}  {res['name']}")
+    return 0
+
+
 def cmd_version(args: argparse.Namespace) -> int:
     from taxnetlab.buildinfo import environment
 
@@ -126,6 +157,16 @@ def cmd_selftest(args: argparse.Namespace) -> int:
               "persistent homology: one essential cluster, one H0 bar per jurisdiction")
         ph_run = api.run({"engine_id": "ph.vietoris_rips", "dataset_id": did, "parameters": {"metric": "manhattan"}})
         check(ph_run["executed"] and api.replay(ph_run["record"]["run_id"])["match"], "pinned persistent homology run replays")
+        cmp = api.preview("compare.models", did, {})
+        check(cmp.get("executed") and cmp["outcome"] == "ok", "model comparison computes")
+        check(all(r["agreed"] == (r["rank"] is not None) for r in cmp["outputs"]["agreement"]),
+              "model comparison: a rank is given only where every reading agrees")
+        strict = api.preview("vtrl2018.tax_routing", did, {"eligibility": "strict"})
+        check(strict.get("executed") and strict["outcome"] == "ok", "tax routing with treaty conditions computes")
+        from taxnetlab.coding import template_zip
+
+        imported = api.import_zip("Illustrative template", template_zip("illustrative"))
+        check(imported["saved"], "illustrative coding template imports")
 
         server = AppServer(api, find_port(18766))
         t = threading.Thread(target=server.serve_forever, daemon=True)
@@ -190,6 +231,17 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("selftest", help="end-to-end self-test in a temporary workspace")
     p.set_defaults(func=cmd_selftest)
+
+    p = sub.add_parser("template", help="write a legal coding template (ZIP)")
+    p.add_argument("kind", choices=("illustrative", "real-sample"))
+    p.add_argument("--jurisdictions", help="comma-separated ISO alpha-3 codes for the real-sample template")
+    p.add_argument("--out")
+    p.set_defaults(func=cmd_template)
+
+    p = sub.add_parser("import", parents=[common], help="import a coding template ZIP or a folder of table CSV files")
+    p.add_argument("path")
+    p.add_argument("--name")
+    p.set_defaults(func=cmd_import)
 
     p = sub.add_parser("version", help="show version and environment")
     p.set_defaults(func=cmd_version)

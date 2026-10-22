@@ -121,6 +121,18 @@ class Api:
         return {"saved": True, "dataset_id": did, "name": self.ws.dataset_meta(did)["name"],
                 "validation": report.to_dict()}
 
+    def import_zip(self, name: str, data: bytes) -> dict[str, Any]:
+        """Import a coding template or any ZIP of table CSV files (plan s 5.4)."""
+        from taxnetlab.coding import read_template_zip
+
+        return self.import_csv(name, read_template_zip(data))
+
+    @staticmethod
+    def template(kind: str, candidates: list[str] | None = None) -> bytes:
+        from taxnetlab.coding import template_zip
+
+        return template_zip(kind, candidates)
+
     # ------------------------------------------------------------------ views
     def view(self, dataset_id: str, view: str, rule: str = "count", as_of: str | None = None,
              include_domestic: bool = False) -> dict[str, Any]:

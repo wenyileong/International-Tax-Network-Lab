@@ -1,0 +1,163 @@
+{
+ "fixture_0_1": {
+  "compare.models": {
+   "_outcome": "blocked"
+  },
+  "dataset_id": "30873d73b11e520c",
+  "demo.link_summary": {
+   "_outcome": "ok",
+   "jurisdiction_summary": "8a68be08510cac5a117f759f39d0778146ad871679f6bac0562280e2a4318fa5"
+  },
+  "gb2017.conduits_sinks": {
+   "_outcome": "blocked"
+  },
+  "ph.vietoris_rips": {
+   "_outcome": "blocked"
+  },
+  "vtrl2018.tax_routing": {
+   "_outcome": "blocked"
+  }
+ },
+ "gb_fixture": {
+  "compare.models": {
+   "_outcome": "ok",
+   "agreement": "fe70ee49650feee170c762ca317956a343890e4c0a1698f7dcd58e8714aa8292",
+   "classification": "dc8ae530b4f9f6355df6ef0e9b7337e90fd2ed04d3793aabce70b75d356b7ae9",
+   "correlation": "1cc4885e314c463a1ffc70f3b855f212990404a1e5b37caf3670bc1dff0a26ab",
+   "engines": "02255b1951a903d9678c0f9ed20f9663ac6da8a1d3cbf1595b6341d83dc9ee0a",
+   "readings": "34582575fd618ce2c5f6520b55f5a8f5092b16b6ce0c57722a3d7e09ef717164",
+   "summary": "027bd70baf2f4a430dae04ce7e2a2ab3a10d3dc16c2d35a1d030e32c83100620"
+  },
+  "dataset_id": "f351aaa0d37a259e",
+  "demo.link_summary": {
+   "_outcome": "ok",
+   "jurisdiction_summary": "ac6d81334bfa05704a94ff1f34cf0fa9e73beba7d1ef678c5c974bd42b434afd"
+  },
+  "gb2017.conduits_sinks": {
+   "_outcome": "ok",
+   "country_chains": "cf37f8a6f7a74835b32f5d3341a2021969cdd90972af24941b38b585a0d5ddfa",
+   "jurisdictions": "555618731b1c659f3a47115782eff1f68388f07fee45c0dc383fa6c9edefa078",
+   "summary": "43a8ce7d258a366d66d78d01b5d0192bdd8fb4a55d47597b3a8e98117301d8b2"
+  },
+  "ph.vietoris_rips": {
+   "_outcome": "blocked"
+  },
+  "vtrl2018.tax_routing": {
+   "_outcome": "blocked"
+  }
+ },
+ "synthetic_17": {
+  "compare.models": {
+   "_outcome": "ok",
+   "agreement": "2edd685a0e38ff257a553bba8909558d02ead370368d02e8ed434b1f06b94adb",
+   "classification": "06ce8b0b81f3ee1e053562331704153e284cb9ccfaddd7ca982fdfaf569974fd",
+   "correlation": "0abc8e533e473db513dd9c8e7ed976a497572089026f388eaf45140989f8c6e1",
+   "engines": "fa213d51be2e1bfc771feba349b95e58c1c1d1cbef159e71b183147aa65a225a",
+   "readings": "b20fe9f301897333b1dc465acd2eea12422f06bc7b18bd550042cb0a64b849ef",
+   "summary": "41bc4a7448980ae5c190f580692ec27a007d6d48b21d6daa13e8e68da8a80eb3"
+  },
+  "dataset_id": "711570b6ebbb7594",
+  "demo.link_summary": {
+   "_outcome": "ok",
+   "jurisdiction_summary": "9a2b3e178a0ee7fed7acca6e53412705227cb1dd2beb3a259a83b5a152171200"
+  },
+  "gb2017.conduits_sinks": {
+   "_outcome": "ok",
+   "country_chains": "a8fcbb241a6b5273794f39fce37b23530fee88c0e291ea42e5bb1917aeeab4cb",
+   "jurisdictions": "09a497aec06eb9b9c72d8e431a8ab154c26e03c8755e684cc56d3b6a0b2a29dc",
+   "summary": "5a35e692da4b411134854c5217fa86f05e396ce55ca228f6b6563f428bec86c5"
+  },
+  "ph.vietoris_rips": {
+   "_outcome": "ok",
+   "betti": "46b08cd3fc3f6a648ea54b1d9b701e46f9ad537d2e31e7fc36cb5892cc477030",
+   "diagram": "be8eacd9e201117f8f7a135ee9a0cb2bda9e0ce1750c17ab0bf0d7f5fba19ee4",
+   "distances": "7062926d2dac8efd1ba7c8d8153621e90ebd4b110f3c47e70549b172142220ad",
+   "features": "5748c0abcb32032a1e6a23f6afa390a6ff03fcb47ec66af2eae59386d04a1bde",
+   "influence": "a9b72da875aa6b81a729ed2ee10ffe04dcc36e12206dd68af0e807e0161cd19d",
+   "points": "5264acae33846143ecb62b1a8b4639ec6bd414f3cd0964b67d60550d43de32b3",
+   "summary": "c40e19e174f73a03557470ab42d088ecfbb78d5de72cdb8e198d2e1c27652d40"
+  },
+  "vtrl2018.tax_routing": {
+   "_outcome": "ok",
+   "centrality": "d5f6113ef5e5f8b45195a575749a7b582db9d1a91d3370e71cfb37be1250fdf8",
+   "legs": "02d1cd81ad8eed8ffdb45f68c77dffb50732493dcc6e249dfef2849f4c4677bf",
+   "pairs": "9f05a032a4e094d2eb320c743048da8b4cb91f45786a3a3729cc86ab13d91a0d",
+   "summary": "ee233e9a2cb052214ec11f31dbdc2e8ab619c9b7ba075ee533bbe53d4b9b0eb3"
+  }
+ },
+ "synthetic_7_20": {
+  "compare.models": {
+   "_outcome": "ok",
+   "agreement": "74176749d6ccaff570258d56df1436758a2729f1ce517f8ea37e39671b642dfd",
+   "classification": "28a3d8f21e63f380025e0bfc2f3f0facb8d377804e97523b550db742401a5f0f",
+   "correlation": "62b3d33c1996676ba0027df39658da6bed48b403befa569dc95cec9e19052e63",
+   "engines": "5745bdb430d104b43f77557a1f513672149c1ce054a4c779f57d62dec21be250",
+   "readings": "607e4ab9c158604ae8df845bd37bb8be93a0d0000e6e1795dfe89d085d26d73e",
+   "summary": "058e68b2ad76d6a91cb80f2119cb525404b2f390517f2d3887c22842ce08f167"
+  },
+  "dataset_id": "45aba0592fc5718b",
+  "demo.link_summary": {
+   "_outcome": "ok",
+   "jurisdiction_summary": "854e6290099492a5903ebb3dd857094a4a00090fa6a246e6ef705886fe838557"
+  },
+  "gb2017.conduits_sinks": {
+   "_outcome": "ok",
+   "country_chains": "759c071a999aea4e2132bdd3fa1230a3e55aa96bebee2b7023291e56e1e9b030",
+   "jurisdictions": "29d33d41387e58fbbf6ec88dc2a6ed4dc9fec5d1c24a4d7c3aafd36878fde3de",
+   "summary": "14fcab00b024157408d6e6a88acfb2d98105e30b2fd3d7247d0e9e34064d7ed1"
+  },
+  "ph.vietoris_rips": {
+   "_outcome": "ok",
+   "betti": "888ba99352737d11011c7043b8bea319d269b9aa97c406548aa754074cd48e7a",
+   "diagram": "a6a2593f4008d975d359d32fc62a7943bcaea024ff7f6b9b1cd1100b69b09f79",
+   "distances": "d8e63ed9568be0a324cbf96530a4efd2524011eed4f0f183648429c542a43cce",
+   "features": "44a1f9b409d61f577eb628c1f5740ae124d411e5737687acb8490e313f25b66e",
+   "influence": "cf960a38e798ba8128c9bd90b3f47f031d4a23225499b0fd69d5cfc57f4f5d49",
+   "points": "986afbd9cf0ac58129ce57bbc9574105e53aa5afb5064c910d76b82087f7af0a",
+   "summary": "9eaa4b189d70578edb0a0c004faa1da3bbb7fb40483d12a1c9164c8624cec146"
+  },
+  "vtrl2018.tax_routing": {
+   "_outcome": "ok",
+   "centrality": "2fbf33d907a3ca143f009203dea59dc278ebbb014728c9f689c051444cdc8dd7",
+   "legs": "da771e5bdcfb413eefa9d082166c6bcb398a51094503bfd170af3e39dabcd55a",
+   "pairs": "7eb2d5c3e377363c5899a240e47e7e19621554fefe486326261d401b7c909e85",
+   "summary": "9d90f5e4af1f3811c05a63bb003f514e8a062ef2367993a2a3179d30958079ec"
+  }
+ },
+ "vtrl_fixture": {
+  "compare.models": {
+   "_outcome": "ok",
+   "agreement": "c461d25a76e946f9227e72079556634e1bb15d5f86551ad8e39738380dc98872",
+   "classification": "3a9f9ed438b92bb9dcc9922402bf29d8971cf1cef25bb9cd07898f36007cd575",
+   "correlation": "968668ffd2f58eb847ca57b1ca5d94f30fe49fde21ccf12f0940c360b6e60923",
+   "engines": "eed85fb243427d9a66c18687ef979bf9c8ce2d77bcd1071228aba3009c3c5f82",
+   "readings": "0bcc18e8ee99a0a262b1f8ea691266ce93ff5c822f13085e77320c51221d7d44",
+   "summary": "09bdc2be9eb31cadc08d9caa0366a7a1ed4d7b341508ced65c4587af998b6d69"
+  },
+  "dataset_id": "10ef5b2efe53aa8c",
+  "demo.link_summary": {
+   "_outcome": "ok",
+   "jurisdiction_summary": "55cf087112b8be52c22e5e3cd4435c943421100f7f84e3bb66bf9604b25c225a"
+  },
+  "gb2017.conduits_sinks": {
+   "_outcome": "blocked"
+  },
+  "ph.vietoris_rips": {
+   "_outcome": "ok",
+   "betti": "e5031516b9bdfc4cb80ea9235c451abf8095d603dd4c238989be18112c7eb235",
+   "diagram": "1e548319d988b2eeecb280f902b3c28659d7a3bf36af0e603b530f3d3513361b",
+   "distances": "645d60bbaf816cf2a92ae8f84df4a72485aa9a450f5c655246506b8c5d1103fb",
+   "features": "3542761ebc8cb845a1cc6ec8792c79592a6939603c6a55c6308fab113e23a9b7",
+   "influence": "9fbdda330d82e392154bdf8f5037d46691ad77790b64a09e531714920f11ed60",
+   "points": "383d2dc3ca9e4bb39cf1a1e9d920cfe4ff26999d44f330a11518c8a1d07ea7f0",
+   "summary": "5da7e7cc82af354ae73500404ac848d860ccf3105eb0d345caf20ae39378eb70"
+  },
+  "vtrl2018.tax_routing": {
+   "_outcome": "ok",
+   "centrality": "14135d34da95760f558313235fc235c58252345d111b2c15b326d5805803d875",
+   "legs": "01c0e34f5d6fbd520f3c052fee2cfdb3bd6333491634c2ef3f064c942f5c6b54",
+   "pairs": "ce5b652b2d2295c6a34a07f343e081b1b01c04e37e463ea623f6637efed2d51d",
+   "summary": "ace2dc19e670933029fbf45d379d53e2ab62d4fa88469dcb21eba1e5eb462666"
+  }
+ }
+}

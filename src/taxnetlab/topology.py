@@ -336,10 +336,10 @@ def classical_mds(D: Matrix, dims: int = 2, max_iter: int = 3000, tol: float = 1
     if n == 0:
         return [], 0.0, True
     sq = [[float(D[i][j]) ** 2 for j in range(n)] for i in range(n)]
-    row = [sum(r) / n for r in sq]
-    grand = sum(row) / n
+    row = [math.fsum(r) / n for r in sq]
+    grand = math.fsum(row) / n
     B = [[-0.5 * (sq[i][j] - row[i] - row[j] + grand) for j in range(n)] for i in range(n)]
-    trace = sum(B[i][i] for i in range(n))
+    trace = math.fsum(B[i][i] for i in range(n))
     vectors: list[list[float]] = []
     values: list[float] = []
     converged = True
@@ -349,18 +349,18 @@ def classical_mds(D: Matrix, dims: int = 2, max_iter: int = 3000, tol: float = 1
         ok = False
         for _ in range(max_iter):
             for u in vectors:
-                dot = sum(a * b for a, b in zip(v, u))
+                dot = math.fsum(a * b for a, b in zip(v, u))
                 v = [a - dot * b for a, b in zip(v, u)]
-            norm = math.sqrt(sum(a * a for a in v))
+            norm = math.sqrt(math.fsum(a * a for a in v))
             if norm == 0:
                 break
             v = [a / norm for a in v]
-            w = [sum(B[i][j] * v[j] for j in range(n)) for i in range(n)]
+            w = [math.fsum(B[i][j] * v[j] for j in range(n)) for i in range(n)]
             for u in vectors:
-                dot = sum(a * b for a, b in zip(w, u))
+                dot = math.fsum(a * b for a, b in zip(w, u))
                 w = [a - dot * b for a, b in zip(w, u)]
-            lam_new = sum(a * b for a, b in zip(w, v))
-            wn = math.sqrt(sum(a * a for a in w))
+            lam_new = math.fsum(a * b for a, b in zip(w, v))
+            wn = math.sqrt(math.fsum(a * a for a in w))
             if wn == 0:
                 lam = 0.0
                 ok = True
@@ -379,5 +379,5 @@ def classical_mds(D: Matrix, dims: int = 2, max_iter: int = 3000, tol: float = 1
         vectors.append(v)
         values.append(max(lam, 0.0))
     coords = [[vectors[k][i] * math.sqrt(values[k]) for k in range(dims)] for i in range(n)]
-    share = (sum(values) / trace) if trace > 0 else 0.0
+    share = (math.fsum(values) / trace) if trace > 0 else 0.0
     return coords, share, converged

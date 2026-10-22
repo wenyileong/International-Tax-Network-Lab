@@ -2,7 +2,7 @@
 
 A local-first research workbench for analysing international tax and corporate ownership networks. It is built to implement published methods faithfully and keep them separate, to record exactly how every result was produced, and to let a researcher inspect, compare and export results to a standard fit for peer-reviewed work.
 
-**Release 0.5.** Core contracts, data layer, network views, run records with replay, a minimalist offline interface and a Windows executable (0.2), the **optimal tax routing engine** of van 't Riet and Lejour with **live exploration** (0.3), and the **conduits and sinks engine** of Garcia-Bernardo and others with **Plain English and Technical reading modes** (0.4). Release 0.5 adds a **persistent homology engine** and a live **Topology** page: the shape of jurisdictions in tax-attribute space or in tax-routing cost (clusters and loops across all scales, how long each persists, and which jurisdictions the structure depends on). Persistent homology is one of the alternatives to the patented topological method recorded in plan s 9.4; the patent-method engine (US Patent 10,417,262 B2) stays at *interface* status pending the author's decision on the IP gate (`docs/IP_GATE_US10417262.md`). The method engines are at *implemented* status: they pass every test against their specifications and become *verified* once those specifications have been checked by the author. See `docs/PROJECT_PLAN_v2_4.md` and `docs/BUILD_0_5_STATUS.md`.
+**Release 0.6.** Core contracts, data layer, network views, run records with replay, a minimalist offline interface and a Windows executable (0.2); the **optimal tax routing engine** of van 't Riet and Lejour with live exploration (0.3); the **conduits and sinks engine** of Garcia-Bernardo and others and Plain English and Technical reading modes (0.4); a **persistent homology engine** and Topology page (0.5). Release 0.6 adds **treaty conditions with tri-state eligibility** (holding thresholds checked against scenario facts; anti-abuse tests never resolved without an explicit assumption), **legal coding templates** for coding real tax rules, and a **Compare** page that sets the methods' measures side by side and declares a ranking only where every reading of the source agrees. The method engines are at *implemented* status and become *verified* once the author has worked through `docs/verification/AUTHOR_CHECK_PACK.md`. The patent-method engine (US Patent 10,417,262 B2) stays at *interface* status pending the IP decision (`docs/IP_GATE_US10417262.md`). See `docs/PROJECT_PLAN_v2_5.md` and `docs/BUILD_0_6_STATUS.md`.
 
 > The data shipped with the software are synthetic. Every jurisdiction, company, value and rate is fictional. The software gives no tax or legal advice, and network position, centrality or clustering is not evidence of avoidance, misconduct or illegality.
 
@@ -25,6 +25,8 @@ taxnetlab.exe generate --seed 42    create a synthetic dataset
 taxnetlab.exe datasets              list datasets
 taxnetlab.exe run spec.json         execute a run specification
 taxnetlab.exe replay RUN_ID         re-execute a stored run and compare hashes
+taxnetlab.exe template real-sample --jurisdictions NLD,LUX   legal coding template (ZIP)
+taxnetlab.exe import FILE.zip       import a coding template or a folder of CSV files
 taxnetlab.exe selftest              end-to-end check in a temporary workspace
 taxnetlab.exe version               version, build and environment details
 ```
@@ -43,10 +45,11 @@ A run specification is a small JSON file:
 | Overview | Size and composition of the dataset, ownership-fraction distribution, validation report. |
 | Network | Ownership (holder → held), value-flow (held → holder) or jurisdiction-aggregated views. Edge colour and width show the size of each relation; node colour shows the jurisdiction. Click a node for its records. |
 | Matrix | Holder-jurisdiction by held-jurisdiction heatmap under a stated aggregation rule. |
-| Tax routes | Live explorer for the optimal tax routing model: choose a host and a home jurisdiction, change corporate tax, withholding, relief and treaty rates with sliders, and see the cheapest route, its legs, the treaty-shopping gain for every pair and conduit centrality update at once. Sweeps plot a route's tax across a rate's range. Live results are exploratory previews; "Save as run" records the state, including every change, as a replayable run. |
+| Tax routes | Live explorer for the optimal tax routing model: choose a host and a home jurisdiction, change corporate tax, withholding, relief and treaty rates with sliders, apply treaty conditions (holding thresholds, principal purpose and beneficial ownership tests) under stated assumptions, and see the cheapest route, its legs, the treaty-shopping gain for every pair and conduit centrality update at once. Sweeps plot a route's tax across a rate's range. Live results are exploratory previews; "Save as run" records the state, including every change, as a replayable run. |
 | Conduits and sinks | Live explorer for Garcia-Bernardo and others: move the ownership, sink and conduit thresholds and see which jurisdictions are sinks (where value ends, relative to GDP) and conduits (through which it passes), on a conduit map, a sink-centrality chart and a flow diagram of three-country chains. |
 | Topology | Persistent homology: a scale slider shows which jurisdictions group together and which loops exist at that scale; a persistence diagram, barcode and Betti curves show every cluster and loop across all scales; an influence chart shows which jurisdictions the loops depend on. Inputs: a chosen set of tax and network features (scaled, with a choice of distance) or the cost of the cheapest tax route. |
-| Data | Table viewer and CSV download, validation report, synthetic generator and CSV import. |
+| Compare | The methods' measures side by side for every jurisdiction: ranks shown only where every reading of the source agrees (otherwise the range), how many readings support each sink or conduit classification, rank correlations between measures, and definitions side by side. No combined score. |
+| Data | Table viewer and CSV download, validation report, synthetic generator, CSV import, and legal coding templates (download, code, import). |
 | Runs | Execute an engine, inspect outputs, calculation trace and full record, replay, download. |
 | Methods | Every registered engine with its status, boundary and next step. |
 | About | Version, build, source commit, lock-file hash, workspace. |
@@ -55,7 +58,7 @@ A **reading mode** switch in the top bar changes between Plain English (default)
 
 ## Data format
 
-A dataset is a set of CSV tables with header rows; columns are matched by name, in any order. Required tables: `sources`, `jurisdictions`, `entities`, `ownership`. Optional: `jurisdiction_attributes` (GDP is used for weights), `illustrative_tax_edges`, and the tax rule tables used by the routing engine: `tax_domestic` (CIT, general dividend withholding, relief method), `tax_treaty_dividends` (directional treaty withholding) and `tax_relief_overrides` (relief for a particular partner); and `entity_financials` (operating revenue per entity and period), which weights ownership chains in the conduits and sinks engine. Legal rows carry `rule_status` and `verified` columns; unverified real-world rows are flagged on every result that uses them. Column definitions are in `src/taxnetlab/schema.py`; the Data page shows them for each table. Conventions:
+A dataset is a set of CSV tables with header rows; columns are matched by name, in any order. Required tables: `sources`, `jurisdictions`, `entities`, `ownership`. Optional: `jurisdiction_attributes` (GDP is used for weights), `illustrative_tax_edges`, and the tax rule tables used by the routing engine: `tax_domestic` (CIT, general dividend withholding, relief method), `tax_treaty_dividends` (directional treaty withholding) and `tax_relief_overrides` (relief for a particular partner); `entity_financials` (operating revenue per entity and period), which weights ownership chains in the conduits and sinks engine; and `tax_treaty_conditions` (conditions on treaty rates, used when the routing engine applies them). The Data page offers coding templates with a data dictionary for every column. Legal rows carry `rule_status` and `verified` columns; unverified real-world rows are flagged on every result that uses them. Column definitions are in `src/taxnetlab/schema.py`; the Data page shows them for each table. Conventions:
 
 * shares and rates are fractions in [0, 1]; money is an amount plus an ISO 4217 currency;
 * real jurisdictions use ISO 3166-1 alpha-3 codes; fictional ones use the `FIC_` prefix;
@@ -99,11 +102,12 @@ All interface text is loaded from `src/taxnetlab/web/locales/<tag>.json`. Englis
 
 ## Project documents
 
-* `docs/PROJECT_PLAN_v2_4.md`: plan, status ladders, phases and release gates; s 9.4 compares alternative topological methods.
-* `docs/BUILD_0_5_STATUS.md`, `docs/BUILD_0_4_STATUS.md`, `docs/BUILD_0_3_STATUS.md` and `docs/BUILD_0_2_STATUS.md`: what each release contains, the pre-build logical evaluations and test results.
+* `docs/PROJECT_PLAN_v2_5.md`: plan, status ladders, phases and release gates; s 9.4 compares alternative topological methods.
+* `docs/BUILD_0_6_STATUS.md`, `docs/BUILD_0_5_STATUS.md`, `docs/BUILD_0_4_STATUS.md`, `docs/BUILD_0_3_STATUS.md` and `docs/BUILD_0_2_STATUS.md`: what each release contains, the pre-build logical evaluations and test results.
 * `docs/IP_GATE_US10417262.md`: research note on the patent for the author's decision, including option (f), the alternative methods.
 * `docs/METHOD_RECONSTRUCTION_REGISTER.md`: verification checklists for the three published methods.
-* `docs/specs/`: specifications of implemented engines.
+* `docs/specs/`: specifications of implemented engines, the eligibility rule layer and the model comparison.
+* `docs/verification/`: the author check pack and a verification record per engine.
 * `CHANGELOG.md`.
 
 ## Licence and citation

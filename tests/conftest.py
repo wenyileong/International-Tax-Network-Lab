@@ -34,3 +34,18 @@ def rebuild(dataset: Dataset, mutate) -> tuple:
 
 def codes(report, level=None) -> set:
     return {i.code for i in report.issues if level is None or i.level == level}
+
+
+@pytest.fixture
+def server_url_token(workspace):
+    import threading
+
+    from taxnetlab.api import Api
+    from taxnetlab.server import AppServer, find_port
+
+    srv = AppServer(Api(workspace), find_port(19400))
+    t = threading.Thread(target=srv.serve_forever, daemon=True)
+    t.start()
+    yield srv.url, srv.token
+    srv.shutdown()
+    srv.server_close()

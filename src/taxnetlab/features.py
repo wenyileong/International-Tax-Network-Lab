@@ -122,7 +122,7 @@ def build(dataset: Dataset, period: str, feature_ids: list[str], scaling: str,
             for j in dom:
                 others = [k for k in dom if k != j]
                 if others:
-                    col[j] = sum(treaty.get((j, k), dom[j]["dividend_wht_rate"]) for k in others) / len(others)
+                    col[j] = math.fsum(treaty.get((j, k), dom[j]["dividend_wht_rate"]) for k in others) / len(others)
         elif fid == "treaty_count":
             counts: dict[str, float] = defaultdict(float)
             for (payer, _), _r in treaty.items():
@@ -149,7 +149,7 @@ def build(dataset: Dataset, period: str, feature_ids: list[str], scaling: str,
             acc: dict[str, list[float]] = defaultdict(list)
             for r in outputs("vtrl2018.tax_routing")["pairs"]:
                 acc[r["host"]].append(r["shop"])
-            col = {j: sum(v) / len(v) for j, v in acc.items() if v}
+            col = {j: math.fsum(v) / len(v) for j, v in acc.items() if v}
         elif fid == "gb_sink_centrality":
             col = {r["jurisdiction_id"]: r["sink_centrality"] for r in outputs("gb2017.conduits_sinks")["jurisdictions"]}
         elif fid == "gb_conduit_out":
@@ -172,8 +172,8 @@ def build(dataset: Dataset, period: str, feature_ids: list[str], scaling: str,
         if vals and hi == lo and scaling != "none":
             fm.constant.append(f.feature_id)
         if scaling == "zscore" and vals:
-            mean = sum(vals) / len(vals)
-            sd = math.sqrt(sum((v - mean) ** 2 for v in vals) / len(vals))
+            mean = math.fsum(vals) / len(vals)
+            sd = math.sqrt(math.fsum((v - mean) ** 2 for v in vals) / len(vals))
             scaled_cols[f.feature_id] = {j: ((raw[j][f.feature_id] - mean) / sd if sd > 0 else 0.0) for j in included}
         elif scaling == "minmax" and vals:
             scaled_cols[f.feature_id] = {j: ((raw[j][f.feature_id] - lo) / (hi - lo) if hi > lo else 0.0)
@@ -197,9 +197,9 @@ def _gdp(dataset: Dataset, period: str) -> dict[str, float]:
 
 def distance(u: list[float], v: list[float], metric: str) -> float:
     if metric == "euclidean":
-        return math.sqrt(sum((a - b) ** 2 for a, b in zip(u, v)))
+        return math.sqrt(math.fsum((a - b) ** 2 for a, b in zip(u, v)))
     if metric == "manhattan":
-        return sum(abs(a - b) for a, b in zip(u, v))
+        return math.fsum(abs(a - b) for a, b in zip(u, v))
     if metric == "chebyshev":
         return max((abs(a - b) for a, b in zip(u, v)), default=0.0)
     raise ValueError(f"unknown metric {metric}")

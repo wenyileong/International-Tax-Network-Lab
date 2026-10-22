@@ -1,7 +1,7 @@
 # International Tax Network Lab
 ## Project Plan and Technical Roadmap
 
-**Document version:** 2.4 (supersedes 2.3, 2.2, 2.1, 2.0 and 1.0)
+**Document version:** 2.5 (supersedes 2.4, 2.3, 2.2, 2.1, 2.0 and 1.0)
 **Project baseline:** Build 0.1
 **Date:** 22 October 2026
 **Target:** a full research software product (release 1.0), delivered as a Windows executable (`.exe`), developed through verifiable intermediate releases.
@@ -9,6 +9,15 @@
 ---
 
 ## 0. Revision history
+
+### 0.0000 Changes in version 2.5 (release 0.6)
+
+1. **Rule layer completed for the reproduction tables (s 5.2).** Table `tax_treaty_conditions` (minimum holding, holding period, subject-to-tax, beneficial ownership, principal purpose test, limitation on benefits) and tri-state eligibility (`docs/specs/eligibility.md`). The tax routing engine evaluates conditions only when asked (`eligibility` = `strict` or `contingent`); its default reproduces the source, confirmed by the approved-output snapshots.
+2. **Coding templates delivered (s 5.4)** as ZIP archives of CSV files with a data dictionary assigning every column to a coding layer, rather than a workbook (A38): an illustrative template and a real-sample template; header-based import; round-trip test.
+3. **Model comparison brought forward from Phase 8 (s 8, s 6.3)** for the documented readings of each source (`docs/specs/compare_models.md`): agreement rule, robustness shares, rank correlations, no combined score. Sensitivity sweeps beyond the documented readings remain in Phase 8 (A39).
+4. **Promotion gate (s 3.1).** `docs/verification/AUTHOR_CHECK_PACK.md`, generated from the specifications, and one record per engine; a test refuses `verified` status without a completed record.
+5. **Regression snapshots (s 6.1, 6.3)** of approved outputs, checked on every platform and Python version in CI; floating-point sums use exact summation so that hashes agree across interpreter versions (A36).
+6. **Sequence (s 10.3):** release 0.7 is the author's checks and promotions, the IP decision and the start of Phase 7 (expectation register, first real-data importer, a legal-row verification log, A37).
 
 ### 0.000 Changes in version 2.4 (release 0.5)
 
@@ -476,8 +485,9 @@ The table in 10.2 is kept for reference. From 0.3 the order is:
 | 0.3 | **Tax routing, method first.** Phase 3 for van 't Riet and Lejour (specification, feasibility); the tax-rule tables needed by the reproduction variant (domestic rates and relief method, directional treaty withholding, directional relief overrides); the reference engine; live route explorer with scenario overrides and pinning. | Engine at `implemented` with every hand-calculated fixture, a brute-force differential test and property tests passing; promotion to `verified` once the author has checked the specification against the source. |
 | 0.4 | Phase 3 for Garcia-Bernardo and others and for the patent (IP gate); conduit and sink engine; reading modes. **Delivered** (engine at `implemented`; IP decision open). | As 10.2, Phases 3 and 4. |
 | 0.5 | **Alternative topological method (2.4).** Alternatives recorded (s 9.4); specification and engine for persistent homology with the FeatureMatrix and a network-native input; Topology page with live exploration; the patent-method engine kept at `interface`. | Engine at `implemented` with hand-calculated fixtures, an independent rank-based check of Betti numbers, the stability property and (where installed) a differential test against Ripser passing; design constraints tested. |
-| 0.6 | Author checks of the three draft specifications and promotion to `verified`; IP decision; remaining Phase 5 rule layer (eligibility, coding template); model comparison page. | Engines `verified`; IP decision recorded. |
-| 0.6 onwards | As 10.2, Phases 5 (remaining rule layer: eligibility, coding template), 6 to 9. | As 10.2. |
+| 0.6 | Remaining Phase 5 rule layer (tri-state eligibility, treaty conditions, coding templates); model comparison page for the documented readings; author check pack and promotion gate; regression snapshots. **Delivered** (2.5). | Eligibility and comparison engines `implemented` with "nothing changes" and agreement-rule tests; template round trip; snapshots stable across platforms. |
+| 0.7 | Author checks and promotions to `verified`; IP decision; Phase 7 start: expectation register entries, a legal-row verification log (A37), the first real-data importer. | Engines `verified` with records; IP decision recorded. |
+| 0.7 onwards | As 10.2, Phases 7 to 9. | As 10.2. |
 
 **Why this order.** Contracts and the first executable (Phase 1) come before engines so that three engines do not produce three designs and packaging problems surface early, not at 1.0. Specification and feasibility for all three methods (Phase 3) precede engine work because data licensing or the patent may change which engine is worth building first. Replication sits with real data (Phase 7), so earlier gates require only `verified`.
 
@@ -532,10 +542,11 @@ Unsigned PyInstaller executables commonly trigger Windows SmartScreen warnings a
 
 1. Author checks of `docs/specs/vtrl2018_tax_routing.md` (CPB Discussion Paper 349, pp 7 to 10 and 13 to 18, and the journal version) and `docs/specs/gb2017_conduits_sinks.md` (Methods, Eqs 1 to 5); resolve the open questions; promote each engine to `verified` if its fixtures still pass.
 1a. Author's decision on the IP gate (`docs/IP_GATE_US10417262.md` s 5), after checking the patent's maintenance-fee record.
+0. Work through `docs/verification/AUTHOR_CHECK_PACK.md` and complete the records in `docs/verification/records/`.
 1b. Author check of `docs/specs/ph_vietoris_rips.md` and of the reasoning in s 9.4; landscape search before any public distribution (s 9.4, item 4); read the landmark patents before Ball Mapper is considered.
 2. Choose the licence (s 4.6); create the `v0.1.0` and `v0.3.0` tags (tag pushes are not available from the build session).
 3. Physical Windows smoke test of the CI-built executable (s 11.1).
-4. Release 0.6 (s 10.3).
+4. Release 0.7 (s 10.3).
 5. Obtain the JAF Rule Bench 1.0 read-me and specification so that the shared formats match the current JAF build.
 
 ---
@@ -598,6 +609,15 @@ Unsigned PyInstaller executables commonly trigger Windows SmartScreen warnings a
 | A33 | s 5.2 FeatureMatrix | A matrix built from engine outputs had to cite an earlier run record, so a live preview could never use one, and a run would depend on another run having been made first. | In-run derivation with recorded engine identifiers, versions, parameters and the matrix hash; the outputs are deterministic, so replay reproduces them. |
 | A34 | s 9.3, s 10.2 Phase 6 | Topological analysis was tied to one patented pipeline, so the whole method family depended on a single IP decision. | Alternatives assessed (s 9.4); the patent engine kept behind its gate; persistent homology built under stated design constraints. |
 | A35 | s 9.3 | The gate's scope ("any TDA code") would also block methods that recite none of the claimed elements. | Scope clarified: the gate governs the patented pipeline and Mapper-type methods; other methods go through s 9.4. |
+
+### A.5 Issues in version 2.4 (resolved in 2.5)
+
+| # | Location in v2.4 | Issue | Resolution in 2.5 |
+|---|---|---|---|
+| A36 | s 7.2 | Python 3.12 changed the built-in `sum` of floats (compensated summation), so a run gave different output hashes under Python 3.11 and 3.12 (found by the new snapshots for the as-reported ownership reading). | Exact summation (`math.fsum`) in every engine; snapshots checked on both versions and both platforms in CI. |
+| A37 | s 5.4 | Every legal row should carry a verifier note and date, but adding columns to existing tables would change every dataset identifier. | Interim: the `note` column; a separate verification log table (schema generation 2, so identifiers are unchanged) is planned for 0.7. |
+| A38 | s 5.4 | A template *workbook* needs a spreadsheet library in the executable. | ZIP of CSV files with a data dictionary and read-me; spreadsheets open CSV directly; import from the ZIP or the CSV files. |
+| A39 | s 10.2 Phase 8 | The comparison page waited for the sensitivity framework, although the agreement rule needs only the documented readings. | Comparison over the documented readings in 0.6; general sensitivity sweeps stay in Phase 8. |
 
 ---
 

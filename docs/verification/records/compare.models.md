@@ -1,0 +1,11 @@
+# Verification record: compare.models
+
+Complete this record when the specification has been checked against its source (see `docs/verification/AUTHOR_CHECK_PACK.md`). The engine's status may be raised to `verified` only when every field below is filled and the outcome is *confirmed* or *corrected* (a test enforces this).
+
+**Specification:** `docs/specs/compare_models.md`
+**Checked by:**
+**Date (YYYY-MM-DD):**
+**Source versions consulted:**
+**Outcome (confirmed, corrected or not yet checked):** not yet checked
+**Items corrected (with the commit that changed the specification):**
+**Items still open:**
