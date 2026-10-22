@@ -13,6 +13,7 @@ Protections for a local server that a browser can reach:
 from __future__ import annotations
 
 import json
+import logging
 import mimetypes
 import secrets
 import socket
@@ -34,6 +35,47 @@ from taxnetlab.validation import ValidationError
 DEFAULT_PORT = 8766  # JAF Rule Bench uses 8765; the two tools can run side by side
 PORT_ATTEMPTS = 20
 MAX_BODY = 64 * 1024 * 1024
+
+#: Documented HTTP routes (docs/API.md is generated from this list; a test calls every route).
+#: POST routes need the session token header and a JSON body.
+ROUTES: tuple[tuple[str, str, str], ...] = (
+    ("GET", "/api/about", "version, build, source commit, lock-file hash and workspace"),
+    ("GET", "/api/locales", "available interface languages"),
+    ("GET", "/api/locales/{tag}", "interface strings for a language, with fallback resolved"),
+    ("GET", "/api/engines", "every registered engine: status, boundary, parameters, measures, outputs"),
+    ("GET", "/api/guide", "the user guide and method notes (Markdown)"),
+    ("GET", "/api/datasets", "datasets in the workspace"),
+    ("GET", "/api/datasets/{dataset_id}", "one dataset: counts, sources, schema, validation report"),
+    ("GET", "/api/datasets/{dataset_id}/tables/{table}", "a table preview (JSON)"),
+    ("GET", "/api/datasets/{dataset_id}/tables/{table}.csv", "a table as canonical CSV"),
+    ("GET", "/api/datasets/{dataset_id}/view?view=ownership|value_flow|jurisdiction", "a graph view"),
+    ("GET", "/api/datasets/{dataset_id}/matrix?rule=count|fraction_sum|value_sum", "jurisdiction matrix"),
+    ("GET", "/api/templates/illustrative.zip", "illustrative legal coding template"),
+    ("GET", "/api/templates/real_sample.zip?jurisdictions=NLD,LUX", "real-sample legal coding template"),
+    ("GET", "/api/runs", "stored runs, with integrity and stale flags"),
+    ("GET", "/api/runs/{run_id}", "one run: record, summary and typed outputs"),
+    ("GET", "/api/runs/{run_id}/outputs/{name}.csv", "an output table as stored"),
+    ("GET", "/api/runs/{run_id}/record.json", "the run record"),
+    ("GET", "/api/runs/{run_id}/report.html", "self-contained HTML report"),
+    ("GET", "/api/runs/{run_id}/package.zip?include_outputs=true|false", "export package by reproducibility tier"),
+    ("GET", "/api/jobs", "background runs"),
+    ("GET", "/api/jobs/{job_id}", "one background run: state, progress, run id"),
+    ("GET", "/api/expectations", "frozen expectation entries"),
+    ("GET", "/api/expectations/{entry_id}", "one frozen entry"),
+    ("GET", "/api/replications", "stored replication reports"),
+    ("POST", "/api/datasets/synthetic", "generate a synthetic dataset {seed, n_jurisdictions, ...}"),
+    ("POST", "/api/datasets/import", "import CSV tables {name, tables: {table: csv}, mapping?}"),
+    ("POST", "/api/datasets/import_zip", "import a ZIP of table CSV files {name, zip_base64, mapping?}"),
+    ("POST", "/api/engines/{engine_id}/preview", "exploratory preview, nothing stored {dataset_id, parameters}"),
+    ("POST", "/api/runs", "execute and store a run {engine_id, dataset_id, parameters, research_question}"),
+    ("POST", "/api/runs/{run_id}/replay", "re-execute a run and compare output hashes"),
+    ("POST", "/api/jobs", "execute a run in the background (same body as /api/runs); 202"),
+    ("POST", "/api/jobs/{job_id}/cancel", "cancel a background run; nothing is stored"),
+    ("POST", "/api/expectations", "freeze an expectation entry {entry, frozen_by}"),
+    ("POST", "/api/replications", "check a run against a frozen entry {entry_id, run_id}"),
+    ("POST", "/api/reproduce", "reproduce a run from an export package {zip_base64}"),
+    ("POST", "/api/quit", "stop the server"),
+)
 TOKEN_HEADER = "X-TaxNetLab-Token"
 
 
@@ -185,8 +227,9 @@ class Handler(BaseHTTPRequestHandler):
             self._error(404, "not_found", str(exc.args[0]) if exc.args else "not found")
         except (ValueError, TypeError) as exc:
             self._error(400, "bad_request", str(exc))
-        except Exception as exc:  # pragma: no cover - logged for the console
+        except Exception as exc:  # pragma: no cover - logged for the console and the log file
             traceback.print_exc()
+            logging.getLogger("taxnetlab").exception("request failed: %s %s", method, path)
             self._error(500, "internal_error", f"{type(exc).__name__}: {exc}")
 
     def _api(self, method: str, parts: list[str], qs: dict[str, list[str]]) -> None:
@@ -223,6 +266,8 @@ class Handler(BaseHTTPRequestHandler):
                 cands = [c for c in (_q(qs, "jurisdictions") or "").split(",") if c.strip()] or None
                 return self._send(200, api.template(kind, cands), "application/zip",
                                   {"Content-Disposition": f'attachment; filename="taxnetlab_{kind}_template.zip"'})
+            if p == ["guide"]:
+                return self._json(200, api.guide())
             if p == ["expectations"]:
                 return self._json(200, api.expectations())
             if len(p) == 2 and p[0] == "expectations":

@@ -32,7 +32,7 @@ SPECS = [
 
 HEADER = """# Author check pack
 
-**Purpose:** the checks that stand between each engine and `verified` status (plan v2.5, s 3.1 and s 13). An engine built on a specification is promoted only after the author has checked the specification against its source and recorded the outcome in `docs/verification/records/<engine>.md` (a test enforces this).
+**Purpose:** the checks that stand between each engine and `verified` status (plan v2.6, s 3.1 and s 13). An engine built on a specification is promoted only after the author has checked the specification against its source and recorded the outcome in `docs/verification/records/<engine>.md` (a test enforces this).
 **Generated** by `scripts/make_check_pack.py` from the specifications; do not edit the item lists by hand. Mark the outcome of each item here (or in a copy), then complete the sign-off in the engine's record file.
 
 **How to use.** For each item: read the cited part of the source; mark the outcome as *confirmed*, *corrected* (state the correction) or *open*. A corrected item changes the specification first, then the code, then the fixtures, in that order; the approved-output snapshots (`tests/regression/approved.json`) are regenerated only with the change documented in the changelog.

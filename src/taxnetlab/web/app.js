@@ -161,6 +161,8 @@
       { name: t("chart.download_publication"), icon: { width: 1000, height: 1000, path: "M150 150h700v700H150z M250 650l150-200 120 140 90-110 140 170" },
         click: (gd) => publicationFigure(gd, csv ? csv.name : "chart") }];
     if (csv) buttons.push({ name: t("chart.download_csv"), icon: Plotly.Icons.disk, click: () => download(csv.name + ".csv", csvOf(csv.columns, csv.rows)) });
+    node.setAttribute("role", "img");
+    node.setAttribute("aria-label", t("a11y.chart", { name: (csv && csv.name ? csv.name : "chart").replace(/_/g, " ") }));
     const full = baseLayout(layout);
     const wm = (full.annotations || []).find((a) => a._wm);
     if (wm) full.margin = Object.assign({}, full.margin, { t: Math.max((full.margin || {}).t || 0, 12 + 14 * wm._wm) });
@@ -1230,6 +1232,44 @@
     await compute();
   };
 
+  // ------------------------------------------------------------------ guide (user guide, method notes, glossary)
+  // A deliberately small Markdown renderer for the bundled guide: text is escaped first, so the guide cannot
+  // inject markup; it supports headings, paragraphs, lists, code blocks, inline code, bold, italic and links.
+  function markdown(src) {
+    const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const inline = (s) => esc(s).replace(/`([^`]+)`/g, "<code>$1</code>").replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+      .replace(/(^|[^*])\*([^*\s][^*]*)\*/g, "$1<em>$2</em>").replace(/&lt;(https?:[^&\s]+)&gt;/g, '<a href="$1" target="_blank" rel="noopener">$1</a>');
+    const out = []; let list = null, para = [], code = null;
+    const flush = () => { if (para.length) { out.push("<p>" + inline(para.join(" ")) + "</p>"); para = []; } if (list) { out.push(list.tag === "ol" ? "<ol>" + list.items.join("") + "</ol>" : "<ul>" + list.items.join("") + "</ul>"); list = null; } };
+    for (const line of src.split("\n")) {
+      if (code !== null) { if (line.startsWith("```")) { out.push("<pre><code>" + esc(code.join("\n")) + "</code></pre>"); code = null; } else code.push(line); continue; }
+      if (line.startsWith("```")) { flush(); code = []; continue; }
+      const h = line.match(/^(#{1,3}) (.*)$/);
+      if (h) { flush(); const n = h[1].length + 1; out.push(`<h${n}>${inline(h[2])}</h${n}>`); continue; }
+      const li = line.match(/^\s*(\*|\d+\.) (.*)$/);
+      if (li) { if (para.length) { out.push("<p>" + inline(para.join(" ")) + "</p>"); para = []; } const tag = li[1] === "*" ? "ul" : "ol"; if (!list || list.tag !== tag) { if (list) flush(); list = { tag, items: [] }; } list.items.push("<li>" + inline(li[2]) + "</li>"); continue; }
+      if (!line.trim()) { flush(); continue; }
+      if (list && /^\s{2,}\S/.test(line)) { list.items[list.items.length - 1] = list.items[list.items.length - 1].replace("</li>", " " + inline(line.trim()) + "</li>"); continue; }
+      para.push(line.trim());
+    }
+    flush();
+    const box = el("div", { class: "prose" }); box.innerHTML = out.join("\n"); return box;
+  }
+  PAGES.guide = async function (root) {
+    header(root, "guide.title", "guide.lede");
+    const g = await api("GET", "guide");
+    const measures = [];
+    S.engines.forEach((e) => e.measures.forEach((m) => measures.push({ name: m.name, definition: m.definition, unit: m.unit, engine: e.display_name })));
+    const statuses = ["interface", "specified", "implemented", "verified", "replicated", "replicated_with_discrepancies"];
+    root.append(el("div", { class: "grid" }, [
+      el("div", { class: "card" }, [markdown(g.user_guide)]),
+      el("div", { class: "card" }, [markdown(g.methods)]),
+      el("div", { class: "card" }, [el("h2", { i18n: "guide.glossary" }), el("h3", { i18n: "guide.statuses" }),
+        renderTable(["status", "meaning"], statuses.map((s) => ({ status: t("status." + s), meaning: t("glossary.status." + s) }))),
+        el("h3", { i18n: "guide.measures" }), renderTable(["name", "definition", "unit", "engine"], measures)]),
+    ]));
+  };
+
   // ------------------------------------------------------------------ data
   const TABLES = ["sources", "jurisdictions", "jurisdiction_attributes", "entities", "ownership", "illustrative_tax_edges",
     "tax_domestic", "tax_treaty_dividends", "tax_relief_overrides", "entity_financials", "tax_treaty_conditions", "rule_verifications"];
@@ -1591,6 +1631,12 @@
     lsel.value = pick;
     await loadLocale(pick);
     lsel.addEventListener("change", async () => { try { await loadLocale(lsel.value); await loadDataset(); await route(); } catch (e) { fail(e); } });
+    // Display theme (plan s 11.1 smoke test, step 6): system, light or dark; charts are redrawn in the new colours.
+    const themeSel = document.getElementById("theme-select");
+    const applyTheme = (v) => { if (v === "system") delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = v; };
+    themeSel.value = ["light", "dark"].includes(recall("theme")) ? recall("theme") : "system";
+    applyTheme(themeSel.value);
+    themeSel.addEventListener("change", async () => { applyTheme(themeSel.value); store("theme", themeSel.value); await route(); });
     S.mode = recall("mode") === "technical" ? "technical" : "plain";
     const msel = document.getElementById("mode-select");
     msel.value = S.mode;

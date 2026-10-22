@@ -1,0 +1,21 @@
+{
+  "title": "International Tax Network Lab",
+  "upload_type": "software",
+  "description": "A local-first research workbench for analysing international tax and corporate ownership networks, with independently specified method engines, immutable run records, replay, export packages by reproducibility tier and an expectation register for replication.",
+  "creators": [
+    {
+      "name": "Leong, Wen Yi",
+      "orcid": "0009-0005-5691-1270"
+    }
+  ],
+  "keywords": [
+    "international taxation",
+    "corporate ownership networks",
+    "tax treaties",
+    "offshore financial centres",
+    "persistent homology",
+    "reproducible research"
+  ],
+  "access_right": "closed",
+  "notes": "The licence and access right are to be set by the author before the first archived release (project plan s 4.6)."
+}

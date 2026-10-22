@@ -2,20 +2,19 @@
 
 A local-first research workbench for analysing international tax and corporate ownership networks. It is built to implement published methods faithfully and keep them separate, to record exactly how every result was produced, and to let a researcher inspect, compare and export results to a standard fit for peer-reviewed work.
 
-**Release 0.6.** Core contracts, data layer, network views, run records with replay, a minimalist offline interface and a Windows executable (0.2); the **optimal tax routing engine** of van 't Riet and Lejour with live exploration (0.3); the **conduits and sinks engine** of Garcia-Bernardo and others and Plain English and Technical reading modes (0.4); a **persistent homology engine** and Topology page (0.5). Release 0.6 adds **treaty conditions with tri-state eligibility** (holding thresholds checked against scenario facts; anti-abuse tests never resolved without an explicit assumption), **legal coding templates** for coding real tax rules, and a **Compare** page that sets the methods' measures side by side and declares a ranking only where every reading of the source agrees. The method engines are at *implemented* status and become *verified* once the author has worked through `docs/verification/AUTHOR_CHECK_PACK.md`. The patent-method engine (US Patent 10,417,262 B2) stays at *interface* status pending the IP decision (`docs/IP_GATE_US10417262.md`). See `docs/PROJECT_PLAN_v2_5.md` and `docs/BUILD_0_6_STATUS.md`.
+**Release 1.0.0rc1 (release candidate).** Three published-method engines with live pages (optimal tax routing of van 't Riet and Lejour, with treaty conditions; conduits and sinks of Garcia-Bernardo and others; persistent homology), a model comparison under the agreement rule, sensitivity sweeps with robustness shares, legal coding templates, an expectation register for replication, immutable run records with replay, run reports, export packages by reproducibility tier, and a Windows executable and per-user installer. The release becomes 1.0 when the conditions that only the author can satisfy are met (verification records, a replication on real data, a physical Windows test, the licence and a DOI; see `RELEASING.md` and `docs/BUILD_1_0_RC1_STATUS.md`). Until then the method engines are at *implemented* status and their results are marked unverified. The patent-method engine (US Patent 10,417,262 B2) stays at *interface* status pending the IP decision.
 
 > The data shipped with the software are synthetic. Every jurisdiction, company, value and rate is fictional. The software gives no tax or legal advice, and network position, centrality or clustering is not evidence of avoidance, misconduct or illegality.
 
-## Using the Windows executable
+## Installing on Windows
 
-1. Download `taxnetlab.exe` and `SHA256SUMS.txt` from the latest GitHub Release, or from the `taxnetlab-windows-x64` artefact of the latest successful **CI** workflow run.
-2. Optionally check the file: `certutil -hashfile taxnetlab.exe SHA256` should print the value in `SHA256SUMS.txt`.
-3. Double-click `taxnetlab.exe`. A console window opens and shows the local address; the interface opens in your default browser. The executable is unsigned, so Windows SmartScreen may ask you to confirm (More info, then Run anyway).
-4. Close the console window, or press **Quit** in the interface, to stop.
+**Installer (recommended).** Download `taxnetlab-setup-<version>.exe` and `SHA256SUMS.txt` from the latest GitHub Release (or the `taxnetlab-windows-x64` artefact of the latest successful CI run). Optionally check it with `certutil -hashfile taxnetlab-setup-<version>.exe SHA256`. Run it: no administrator rights are needed; it installs for your user only, adds Start menu shortcuts (the program and the user guide) and an uninstaller, and never touches your workspace.
 
-No installation, Python or administrator rights are needed, and nothing is sent over the network. The server listens on `127.0.0.1` only, from port 8766 (the JAF Rule Bench uses 8765, so both can run together).
+**Portable.** `taxnetlab.exe` runs from any folder without installation.
 
-Your work is kept in a **workspace** folder: `Documents\TaxNetLab` on Windows (`~/TaxNetLab` elsewhere). Use `taxnetlab.exe serve --workspace D:\path\to\folder` or the `TAXNETLAB_WORKSPACE` environment variable to choose another.
+Either way, a console window opens and shows the local address, and the interface opens in your default browser. Close the console window, or press **Quit**, to stop. The software is not code-signed, so Windows SmartScreen may ask you to confirm (More info, then Run anyway). Nothing is sent over the network: the server listens on `127.0.0.1` only, from port 8766.
+
+Your work is kept in a **workspace** folder: `Documents\TaxNetLab` on Windows (`~/TaxNetLab` elsewhere), with a log file in its `logs` folder. Use `--workspace D:\path\to\folder` or the `TAXNETLAB_WORKSPACE` environment variable to choose another. The full user guide is in the interface (**Guide**) and in `docs/USER_GUIDE.md`.
 
 Command-line use of the same executable:
 
@@ -26,7 +25,10 @@ taxnetlab.exe datasets              list datasets
 taxnetlab.exe run spec.json         execute a run specification
 taxnetlab.exe replay RUN_ID         re-execute a stored run and compare hashes
 taxnetlab.exe template real-sample --jurisdictions NLD,LUX   legal coding template (ZIP)
-taxnetlab.exe import FILE.zip       import a coding template or a folder of CSV files
+taxnetlab.exe import FILE.zip       import a coding template or a folder of CSV files (--mapping MAP.json)
+taxnetlab.exe export RUN_ID         export package by reproducibility tier (--report FILE.html)
+taxnetlab.exe reproduce PKG.zip     re-run a packaged run and compare output hashes
+taxnetlab.exe expect list           expectation register (freeze FILE --by NAME; check ID --run RUN)
 taxnetlab.exe selftest              end-to-end check in a temporary workspace
 taxnetlab.exe version               version, build and environment details
 ```
@@ -49,8 +51,9 @@ A run specification is a small JSON file:
 | Conduits and sinks | Live explorer for Garcia-Bernardo and others: move the ownership, sink and conduit thresholds and see which jurisdictions are sinks (where value ends, relative to GDP) and conduits (through which it passes), on a conduit map, a sink-centrality chart and a flow diagram of three-country chains. |
 | Topology | Persistent homology: a scale slider shows which jurisdictions group together and which loops exist at that scale; a persistence diagram, barcode and Betti curves show every cluster and loop across all scales; an influence chart shows which jurisdictions the loops depend on. Inputs: a chosen set of tax and network features (scaled, with a choice of distance) or the cost of the cheapest tax route. |
 | Compare | The methods' measures side by side for every jurisdiction: ranks shown only where every reading of the source agrees (otherwise the range), how many readings support each sink or conduit classification, rank correlations between measures, and definitions side by side. No combined score. |
+| Runs | Execute any engine in the background (progress, cancel), inspect and replay runs, download the record, an HTML report or an export package, check a run against a frozen expectation, freeze expectations, and reproduce a run from a package. |
+| Guide | The user guide, method notes and a glossary of statuses and measures. |
 | Data | Table viewer and CSV download, validation report, synthetic generator, CSV import, and legal coding templates (download, code, import). |
-| Runs | Execute an engine, inspect outputs, calculation trace and full record, replay, download. |
 | Methods | Every registered engine with its status, boundary and next step. |
 | About | Version, build, source commit, lock-file hash, workspace. |
 
@@ -102,12 +105,15 @@ All interface text is loaded from `src/taxnetlab/web/locales/<tag>.json`. Englis
 
 ## Project documents
 
-* `docs/PROJECT_PLAN_v2_5.md`: plan, status ladders, phases and release gates; s 9.4 compares alternative topological methods.
-* `docs/BUILD_0_6_STATUS.md`, `docs/BUILD_0_5_STATUS.md`, `docs/BUILD_0_4_STATUS.md`, `docs/BUILD_0_3_STATUS.md` and `docs/BUILD_0_2_STATUS.md`: what each release contains, the pre-build logical evaluations and test results.
+* `docs/USER_GUIDE.md` and `docs/API.md` (HTTP routes and the Python service layer).
+* `RELEASING.md`: release checklist and the conditions for 1.0.
+* `docs/PROJECT_PLAN_v2_6.md`: plan, status ladders, phases and release gates; s 9.4 compares alternative topological methods.
+* `docs/BUILD_1_0_RC1_STATUS.md`, `docs/BUILD_0_8_STATUS.md`, `docs/BUILD_0_7_STATUS.md`, `docs/BUILD_0_6_STATUS.md`, `docs/BUILD_0_5_STATUS.md`, `docs/BUILD_0_4_STATUS.md`, `docs/BUILD_0_3_STATUS.md` and `docs/BUILD_0_2_STATUS.md`: what each release contains, the pre-build logical evaluations and test results.
 * `docs/IP_GATE_US10417262.md`: research note on the patent for the author's decision, including option (f), the alternative methods.
 * `docs/METHOD_RECONSTRUCTION_REGISTER.md`: verification checklists for the three published methods.
 * `docs/specs/`: specifications of implemented engines, the eligibility rule layer and the model comparison.
 * `docs/verification/`: the author check pack and a verification record per engine.
+* `docs/expectations/`: draft expectation entries for replication (to be checked and frozen by the author).
 * `CHANGELOG.md`.
 
 ## Licence and citation

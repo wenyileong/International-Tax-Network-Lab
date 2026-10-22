@@ -16,6 +16,7 @@ datas = [
 ]
 datas += [(str(p), "taxnetlab/web/locales") for p in sorted((PKG / "web" / "locales").glob("*.json"))]
 datas += [(str(p), "taxnetlab/data") for p in sorted((PKG / "data").glob("*.json"))]
+datas += [(str(p), "taxnetlab/guide") for p in sorted((PKG / "guide").glob("*.md"))]
 if (PKG / "_build_manifest.json").exists():
     datas.append((str(PKG / "_build_manifest.json"), "taxnetlab"))
 

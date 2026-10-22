@@ -176,3 +176,11 @@ details summary { cursor: pointer; color: var(--accent); margin: 6px 0; }
 }
 a.btn { text-decoration: none; display: inline-block; }
 .progress { width: 240px; height: 10px; accent-color: var(--accent); }
+.prose { max-width: 860px; line-height: 1.6; font-size: 14px; }
+.prose h2 { font-size: 20px; margin-top: 4px; } .prose h3 { font-size: 16px; margin-top: 22px; } .prose h4 { font-size: 14px; }
+.prose pre { background: var(--accent-soft); padding: 10px 12px; border-radius: 8px; overflow-x: auto; }
+.prose code { background: var(--accent-soft); padding: 1px 4px; border-radius: 4px; }
+.prose pre code { background: none; padding: 0; }
+.prose li { margin: 3px 0; }
+.skip-link { position: absolute; left: -9999px; top: 8px; z-index: 100; background: var(--surface); color: var(--text); padding: 8px 12px; border: 2px solid var(--accent); border-radius: 8px; }
+.skip-link:focus { left: 12px; }

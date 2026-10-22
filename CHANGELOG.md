@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.0.0rc1 (23 October 2026)
+
+Release candidate for 1.0. Plan v2.6. See `docs/BUILD_1_0_RC1_STATUS.md` and `RELEASING.md`.
+
+* Per-user Windows installer (Inno Setup), built, installed without administrator rights, self-tested and uninstalled by CI; checksums for both the executable and the installer.
+* Guide page: user guide, method notes and glossary; `docs/USER_GUIDE.md`; generated `docs/API.md`.
+* Log file in the workspace; display theme selector; skip link, chart labels and a WCAG AA contrast test; coverage reported in CI.
+* `RELEASING.md` and `.zenodo.json`.
+
 ## 0.8.0 (22 October 2026)
 
 See `docs/BUILD_0_8_STATUS.md`.

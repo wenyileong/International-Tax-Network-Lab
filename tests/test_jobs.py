@@ -67,3 +67,22 @@ def test_jobs_over_http(server_url_token):
             break
         time.sleep(0.05)
     assert state["state"] == "done" and state["run_id"]
+
+
+def test_parallel_jobs_share_the_upstream_cache_safely(workspace):
+    """Several background runs that call other engines at once (plan s 11: reliability)."""
+    from taxnetlab.engines import upstream
+
+    upstream._CACHE.clear()
+    api = Api(workspace)
+    did = api.generate_synthetic({"seed": 9, "n_jurisdictions": 8})["dataset_id"]
+    jobs = [api.jobs.submit({"engine_id": e, "dataset_id": did, "parameters": {}})
+            for e in ("compare.models", "sensitivity.sweep", "compare.models", "ph.vietoris_rips") * 2]
+    states = [api.jobs.wait(j["job_id"], 120)["state"] for j in jobs]
+    assert states == ["done"] * len(jobs)
+    ids = [api.jobs.get(j["job_id"])["run_id"] for j in jobs]
+    hashes = {}
+    for jid, rid in zip(jobs, ids):
+        rec = api.run_record(rid)["record"]
+        hashes.setdefault(rec["engine"]["engine_id"], set()).add(tuple(sorted((k, v["sha256"]) for k, v in rec["outputs"].items())))
+    assert all(len(v) == 1 for v in hashes.values())  # identical results whichever thread ran them

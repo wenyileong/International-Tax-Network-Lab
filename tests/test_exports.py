@@ -9,7 +9,6 @@ from taxnetlab.api import Api
 from taxnetlab.cli import main
 from taxnetlab.datasets import Dataset
 from taxnetlab.exports import tier_of
-from taxnetlab.synthetic import generate
 from taxnetlab.workspace import Workspace
 
 

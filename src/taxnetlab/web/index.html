@@ -9,6 +9,7 @@
 <link rel="stylesheet" href="app.css">
 </head>
 <body>
+<a class="skip-link" href="#main" data-i18n="a11y.skip">Skip to content</a>
 <header class="topbar">
   <div class="brand">
     <svg class="logo" viewBox="0 0 32 32" aria-hidden="true"><line x1="8" y1="9" x2="24" y2="9"/><line x1="8" y1="9" x2="16" y2="24"/><line x1="24" y1="9" x2="16" y2="24"/><circle cx="8" cy="9" r="4.5" fill="#2563eb"/><circle cx="24" cy="9" r="4.5" fill="#f97316"/><circle cx="16" cy="24" r="4.5" fill="#14b8a6"/></svg>
@@ -20,6 +21,8 @@
     <span id="status-chip" class="chip" hidden></span>
     <label class="sr-only" for="mode-select" data-i18n="top.mode">Reading mode</label>
     <select id="mode-select" class="select select-small" data-i18n-title="top.mode"><option value="plain" data-i18n="mode.option_plain">Plain English</option><option value="technical" data-i18n="mode.option_technical">Technical</option></select>
+    <label class="sr-only" for="theme-select" data-i18n="top.theme">Display theme</label>
+    <select id="theme-select" class="select select-small" data-i18n-title="top.theme"><option value="system" data-i18n="theme.system">Auto</option><option value="light" data-i18n="theme.light">Light</option><option value="dark" data-i18n="theme.dark">Dark</option></select>
     <label class="sr-only" for="locale-select" data-i18n="top.language">Language</label>
     <select id="locale-select" class="select select-small" data-i18n-title="top.language"></select>
     <button id="quit-btn" class="btn btn-ghost" data-i18n="top.quit">Quit</button>
@@ -36,6 +39,7 @@
     <a href="#/compare" data-page="compare"><span class="dot" style="--c:#22c55e"></span><span data-i18n="nav.compare">Compare</span></a>
     <a href="#/data" data-page="data"><span class="dot" style="--c:#f59e0b"></span><span data-i18n="nav.data">Data</span></a>
     <a href="#/runs" data-page="runs"><span class="dot" style="--c:#d946ef"></span><span data-i18n="nav.runs">Runs</span></a>
+    <a href="#/guide" data-page="guide"><span class="dot" style="--c:#0d9488"></span><span data-i18n="nav.guide">Guide</span></a>
     <a href="#/methods" data-page="methods"><span class="dot" style="--c:#8b5cf6"></span><span data-i18n="nav.methods">Methods</span></a>
     <a href="#/about" data-page="about"><span class="dot" style="--c:#64748b"></span><span data-i18n="nav.about">About</span></a>
   </nav>

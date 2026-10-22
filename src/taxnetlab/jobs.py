@@ -7,6 +7,7 @@ durable result. Cancelling a job stops the engine at its next checkpoint and sto
 
 from __future__ import annotations
 
+import logging
 import threading
 import time
 import traceback
@@ -63,8 +64,9 @@ class JobManager:
             except ValidationError as exc:
                 job["validation"] = exc.report.to_dict()
                 self._finish(job, "blocked")
-            except Exception as exc:  # reported to the interface; the console keeps the traceback
+            except Exception as exc:  # reported to the interface; the console and the log keep the traceback
                 traceback.print_exc()
+                logging.getLogger("taxnetlab").exception("background run %s failed", job["job_id"])
                 job["error"] = f"{type(exc).__name__}: {exc}"
                 self._finish(job, "failed")
 

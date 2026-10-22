@@ -206,6 +206,13 @@ class Api:
     def replay(self, run_id: str) -> dict[str, Any]:
         return runs.replay(self.ws, run_id)
 
+    # ------------------------------------------------------------------ guide (plan s 8, Phase 9)
+    @staticmethod
+    def guide() -> dict[str, str]:
+        from taxnetlab.buildinfo import resource_path
+
+        return {name: resource_path("guide", f"{name}.md").read_text(encoding="utf-8") for name in ("user_guide", "methods")}
+
     # ------------------------------------------------------------------ expectation register (plan s 7.5)
     def expectations(self) -> list[dict[str, Any]]:
         from taxnetlab.expectations import Register

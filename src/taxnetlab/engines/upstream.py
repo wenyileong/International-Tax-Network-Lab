@@ -7,6 +7,7 @@ The provenance entry records what was run, so that the dependent result can cite
 
 from __future__ import annotations
 
+import threading
 from typing import Any
 
 from taxnetlab.canonical import canonical_json, sha256_text
@@ -15,6 +16,7 @@ from taxnetlab.engines.base import OK
 
 CACHE_SIZE = 24
 _CACHE: dict[str, Any] = {}
+_LOCK = threading.Lock()  # previews, runs and background jobs execute on several threads
 
 
 class UpstreamError(Exception):
@@ -26,8 +28,9 @@ def run_upstream(dataset: Dataset, engine_id: str, params: dict[str, Any], purpo
 
     engine = get_engine(engine_id)
     key = canonical_json([dataset.dataset_id, engine_id, engine.spec.version, params])
-    if key in _CACHE:
-        return _CACHE[key]
+    with _LOCK:
+        if key in _CACHE:
+            return _CACHE[key]
     resolved, report = engine.resolve_parameters(params)
     if report.ok:
         report.extend(engine.validate(dataset, resolved))
@@ -38,7 +41,8 @@ def run_upstream(dataset: Dataset, engine_id: str, params: dict[str, Any], purpo
         raise UpstreamError(f"{engine_id} returned '{result.outcome}': " + "; ".join(result.warnings))
     value = (result.outputs, {"engine_id": engine_id, "version": engine.spec.version, "status": engine.spec.status,
                               "parameters": resolved, "outputs_sha256": sha256_text(canonical_json(result.outputs))})
-    if len(_CACHE) >= CACHE_SIZE:
-        _CACHE.pop(next(iter(_CACHE)))
-    _CACHE[key] = value
+    with _LOCK:
+        while len(_CACHE) >= CACHE_SIZE:
+            _CACHE.pop(next(iter(_CACHE)))
+        _CACHE[key] = value
     return value

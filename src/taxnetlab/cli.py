@@ -37,10 +37,15 @@ def _api(args: argparse.Namespace) -> Api:
 def cmd_serve(args: argparse.Namespace) -> int:
     from taxnetlab.server import serve
 
+    from taxnetlab import logs
+
     api = _api(args)
+    log_path = logs.setup(api.ws.logs_dir)
+    logs.LOGGER.info("starting taxnetlab %s; workspace %s", __version__, api.ws.root)
     created = api.ensure_default_dataset()
     if created:
         print(f"Created a synthetic starter dataset ({created}).")
+    print(f"Log file: {log_path}")
     serve(api, port=args.port, open_browser=not args.no_browser)
     return 0
 

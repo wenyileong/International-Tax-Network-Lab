@@ -1,7 +1,7 @@
 # International Tax Network Lab
 ## Project Plan and Technical Roadmap
 
-**Document version:** 2.5 (supersedes 2.4, 2.3, 2.2, 2.1, 2.0 and 1.0)
+**Document version:** 2.6 (supersedes 2.5, 2.4, 2.3, 2.2, 2.1, 2.0 and 1.0)
 **Project baseline:** Build 0.1
 **Date:** 22 October 2026
 **Target:** a full research software product (release 1.0), delivered as a Windows executable (`.exe`), developed through verifiable intermediate releases.
@@ -9,6 +9,13 @@
 ---
 
 ## 0. Revision history
+
+### 0.00000 Changes in version 2.6 (releases 0.7, 0.8 and 1.0.0rc1)
+
+1. **Phase 7, software part (0.7).** Expectation register with frozen, hashed entries, supersession and stored replication reports (s 7.5); verification log for legal rows (A37 resolved); bundled ISO 3166-1 registry; column mapping for database exports; background runs with progress and cancellation (s 11); a faster tax-routing search (108 jurisdictions in about six seconds) with reference benchmarks and performance budgets.
+2. **Phase 8 (0.8).** Sensitivity sweeps with robustness shares (`sensitivity.sweep`); static HTML run reports; export packages by reproducibility tier with reproduction from a package; publication-style figure export.
+3. **Phase 9, software part (1.0.0rc1).** Per-user installer built, installed, self-tested and uninstalled by CI; Guide page with the user guide, method notes and a glossary; generated API reference; log file in the workspace; display themes; skip link, chart labels and a WCAG AA contrast test; coverage reported in CI; release process (`RELEASING.md`) and archive metadata (`.zenodo.json`).
+4. **Release 1.0 is a decision, not a build (s 1.4).** The software requirements of s 1.4 and s 11 that can be met in code are met in 1.0.0rc1. The remaining conditions are the author's: two engines `verified`, one `replicated` (real data and a frozen expectation), the physical Windows smoke test, the licence and an archived release with a DOI. The status report for 1.0.0rc1 lists each condition and its state.
 
 ### 0.0000 Changes in version 2.5 (release 0.6)
 
@@ -486,8 +493,10 @@ The table in 10.2 is kept for reference. From 0.3 the order is:
 | 0.4 | Phase 3 for Garcia-Bernardo and others and for the patent (IP gate); conduit and sink engine; reading modes. **Delivered** (engine at `implemented`; IP decision open). | As 10.2, Phases 3 and 4. |
 | 0.5 | **Alternative topological method (2.4).** Alternatives recorded (s 9.4); specification and engine for persistent homology with the FeatureMatrix and a network-native input; Topology page with live exploration; the patent-method engine kept at `interface`. | Engine at `implemented` with hand-calculated fixtures, an independent rank-based check of Betti numbers, the stability property and (where installed) a differential test against Ripser passing; design constraints tested. |
 | 0.6 | Remaining Phase 5 rule layer (tri-state eligibility, treaty conditions, coding templates); model comparison page for the documented readings; author check pack and promotion gate; regression snapshots. **Delivered** (2.5). | Eligibility and comparison engines `implemented` with "nothing changes" and agreement-rule tests; template round trip; snapshots stable across platforms. |
-| 0.7 | Author checks and promotions to `verified`; IP decision; Phase 7 start: expectation register entries, a legal-row verification log (A37), the first real-data importer. | Engines `verified` with records; IP decision recorded. |
-| 0.7 onwards | As 10.2, Phases 7 to 9. | As 10.2. |
+| 0.7 | Phase 7 software: expectation register, verification log, registry, column mapping, scale, background runs. **Delivered** (2.6). | Replication path tested end to end on fixtures; reference benchmarks within budget. |
+| 0.8 | Phase 8: sensitivity sweeps, run reports, export packages and reproduction, publication figures. **Delivered** (2.6). | Tier B and C packages reproduced in a second workspace (tested); the second-machine check with licensed data remains. |
+| 1.0.0rc1 | Phase 9 software: installer, guide, API reference, logging, accessibility, release process. **Delivered** (2.6). | CI installs, self-tests and uninstalls without administrator rights. |
+| 1.0 | Author's conditions in s 1.4: verification records, a replication on real data, physical Windows 10 and 11 smoke test, licence, DOI. | s 1.4. |
 
 **Why this order.** Contracts and the first executable (Phase 1) come before engines so that three engines do not produce three designs and packaging problems surface early, not at 1.0. Specification and feasibility for all three methods (Phase 3) precede engine work because data licensing or the patent may change which engine is worth building first. Replication sits with real data (Phase 7), so earlier gates require only `verified`.
 
@@ -618,6 +627,16 @@ Unsigned PyInstaller executables commonly trigger Windows SmartScreen warnings a
 | A37 | s 5.4 | Every legal row should carry a verifier note and date, but adding columns to existing tables would change every dataset identifier. | Interim: the `note` column; a separate verification log table (schema generation 2, so identifiers are unchanged) is planned for 0.7. |
 | A38 | s 5.4 | A template *workbook* needs a spreadsheet library in the executable. | ZIP of CSV files with a data dictionary and read-me; spreadsheets open CSV directly; import from the ZIP or the CSV files. |
 | A39 | s 10.2 Phase 8 | The comparison page waited for the sensitivity framework, although the agreement rule needs only the documented readings. | Comparison over the documented readings in 0.6; general sensitivity sweeps stay in Phase 8. |
+
+### A.6 Issues in version 2.5 (resolved in 2.6)
+
+| # | Location in v2.5 | Issue | Resolution in 2.6 |
+|---|---|---|---|
+| A40 | s 11 (scale) | The tax-routing search did not scale to the source's 108 jurisdictions. | Pruned, index-based search; identical outputs (snapshots); 108 jurisdictions in about six seconds. |
+| A41 | s 7.5 | Freezing and run times compared as text gave the wrong order at sub-second precision. | Times parsed before comparison. |
+| A42 | s 7.3 | Tier B packages must not carry licensed data or outputs by default. | Tier from licence classes; outputs only on explicit confirmation; tested. |
+| A43 | s 11 | "Display themes" in the smoke test had no control in the interface. | Theme selector (auto, light, dark). |
+| A44 | s 1.4 | A version labelled 1.0 would assert conditions (verification, replication, physical test, DOI) that only the author can satisfy. | Release candidate 1.0.0rc1; 1.0 is tagged by the author when s 1.4 holds. |
 
 ---
 
