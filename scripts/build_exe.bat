@@ -13,6 +13,16 @@ pyinstaller --noconfirm --clean packaging\taxnetlab.spec || goto :error
 dist\taxnetlab.exe selftest || goto :error
 echo.
 echo Built and self-tested: %CD%\dist\taxnetlab.exe
+rem Optional: the per-user installer, if Inno Setup 6 is installed (https://jrsoftware.org/isinfo.php).
+set "ISCC=%ProgramFiles(x86)%\Inno Setup 6\ISCC.exe"
+for /f %%v in ('python -c "import taxnetlab; print(taxnetlab.__version__)"') do set "APPVER=%%v"
+if not exist "%ISCC%" goto :noinstaller
+"%ISCC%" /DAppVersion=%APPVER% packaging\installer.iss || goto :error
+echo Installer: %CD%\dist\taxnetlab-setup-%APPVER%.exe
+goto :done
+:noinstaller
+echo Inno Setup not found: the installer was not built. The portable executable is ready.
+:done
 pause
 exit /b 0
 :error
