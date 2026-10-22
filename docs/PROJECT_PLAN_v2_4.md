@@ -1,7 +1,7 @@
 # International Tax Network Lab
 ## Project Plan and Technical Roadmap
 
-**Document version:** 2.3 (supersedes 2.2, 2.1, 2.0 and 1.0)
+**Document version:** 2.4 (supersedes 2.3, 2.2, 2.1, 2.0 and 1.0)
 **Project baseline:** Build 0.1
 **Date:** 22 October 2026
 **Target:** a full research software product (release 1.0), delivered as a Windows executable (`.exe`), developed through verifiable intermediate releases.
@@ -9,6 +9,14 @@
 ---
 
 ## 0. Revision history
+
+### 0.000 Changes in version 2.4 (release 0.5)
+
+1. **Alternative topological methods recorded (new s 9.4).** The methods that could serve the goals of the patented pipeline (a summary of the shape of a feature space and its stability) without reciting the elements of claim 1 of US 10,417,262 B2 are compared in s 9.4: persistent homology, Ball Mapper, exact Reeb graphs and contour trees, network-native methods, UMAP with HDBSCAN, and a Mapper restricted to lenses not computed by matrix-vector multiplication. They are also recorded as option (f) in `docs/IP_GATE_US10417262.md`.
+2. **The patent method is kept.** The engine `us10417262.tda` stays registered at `interface` status behind the unchanged IP gate (s 9.3); its specification and any Mapper-type code remain blocked until the author records a decision. The alternatives are additional engines, not replacements.
+3. **Persistent homology engine (new).** `ph.vietoris_rips`, specified in `docs/specs/ph_vietoris_rips.md` (v0.1) and built in release 0.5 at `implemented`. Its design constraints (D1 to D5 of the specification) keep it free of a lens, a cover, clustering within cover elements and a graph of clusters. It is included in the executable; before any public distribution the author confirms the reasoning in s 9.4 and the patent landscape search (s 9.4, item 4) is completed.
+4. **FeatureMatrix implemented (s 5.2).** A FeatureMatrix may now be derived inside a run from engine outputs computed with recorded engine identifiers, versions and parameters, as well as from a cited run record (A33).
+5. **Sequence revised (s 10.3).** Release 0.5 is the alternative topological method and the Topology page; the items previously planned for 0.5 (author checks, IP decision, remaining rule layer, model comparison page) move to 0.6.
 
 ### 0.00 Changes in version 2.3 (release 0.4)
 
@@ -245,7 +253,7 @@ The two tools answer different questions. The Network Lab reproduces published m
 
 **Eligibility is tri-state:** `eligible`, `ineligible`, `indeterminate`. Mechanical conditions are evaluated. Judgement-based conditions (the principal purpose test, contested beneficial ownership) evaluate to `indeterminate` and are resolved only by an explicit scenario assumption recorded in the run. The software never resolves a judgement-based condition by default.
 
-**FeatureMatrix (for TDA):** `matrix_id`, observation unit (for example jurisdiction-year), feature definitions (name, unit, source or derivation), rows and missing-value policy. If a feature is another engine's output, the matrix is a *declared derived dataset* citing that run record.
+**FeatureMatrix (for TDA):** `matrix_id`, observation unit (for example jurisdiction-year), feature definitions (name, unit, source or derivation), rows and missing-value policy. If a feature is another engine's output, the matrix is a *declared derived dataset*: it either cites that run record or, from 2.4, is derived inside the run from engine outputs computed with recorded engine identifiers, versions and parameters (A33). The matrix carries its own content hash, and no missing value is imputed: an observation lacking a selected feature is excluded and listed.
 
 **Source:** identifier, title, custodian, URL or API, retrieval date, licence and terms, permitted uses, redistribution restrictions, coverage, limitations, transformations, and `licence_class` (`public`, `public_attribution`, `licensed_no_redistribution`, `synthetic`). For legal sources, an OSCOLA citation field and a pinpoint field.
 
@@ -344,7 +352,7 @@ Pages: Workspace, Data manager (including coding templates), Network explorer, T
 - **Network explorer:** arrowheads and the view name (ownership or value-flow) in the legend.
 - **Tax route simulator:** reproduction variant limited to the source's scope (repatriated dividends); extensions labelled; routes with `indeterminate` eligibility shown separately with the assumption required.
 - **Conduit and sink analysis:** namespaced measures; a separate, labelled exploratory panel for generic centralities.
-- **Topological explorer:** select a declared FeatureMatrix and show its provenance.
+- **Topological explorer:** select a declared FeatureMatrix and show its provenance. From 0.5, the Topology page (persistent homology): persistence diagram, barcode, Betti curves, a scale slider showing the Rips graph and the clusters at that scale, loops traced on a display projection, and the influence of each observation on the diagram.
 - **Model comparison:** namespaced measures with definitions side by side; agreement rule and robustness shares (section 6.3); no combined score by default.
 - **Run history:** list, filter, compare and replay runs; stale results marked.
 
@@ -407,7 +415,28 @@ The claim chart and assessment are research documents, not a freedom-to-operate 
 
 **Status (2.3):** research completed in `docs/IP_GATE_US10417262.md`; the decision is the author's and is recorded in that document. Until then the TDA engine stays at `interface`.
 
+**Status (2.4):** unchanged. The patent-method engine `us10417262.tda` stays registered at `interface` and out of the executable. The gate in this section governs the patented pipeline and every Mapper-type method (lens, cover, clustering within cover elements, graph of clusters). Methods without those elements are assessed under s 9.4.
+
 **Remaining tasks:** specification of preprocessing, lens, metric, cover, overlap, clustering and graph construction; membership preservation; benchmarks; against a declared FeatureMatrix.
+
+### 9.4 Alternative topological methods (new in 2.4)
+
+**Purpose.** The patented pipeline is one way of summarising the shape of a high-dimensional feature space. The research questions for this project (do jurisdictions form clusters, loops or flares in tax-attribute space; which jurisdictions shape that structure; is it stable) can be served by other published methods. Under the all-elements rule, a method that lacks any element of an independent claim does not infringe that claim literally, and the doctrine of equivalents is applied element by element, not to the invention as a whole (*Warner-Jenkinson Co v Hilton Davis Chemical Co* 520 US 17 (1997)). If an element was narrowed by amendment during prosecution, equivalents for that element are presumptively barred (*Festo Corp v Shoketsu Kinzoku Kogyo Kabushiki Co* 535 US 722 (2002)); this matters only for alternatives that keep most of the claimed steps, and turns on the file wrapper, which has not yet been read. The comparison below is a research document for the author, not a freedom-to-operate opinion.
+
+| Method | Principal sources | Elements of claim 1 (IP note s 2) | Other IP and licences | Decision in the plan |
+|---|---|---|---|---|
+| **Persistent homology** (Vietoris–Rips filtration of a distance matrix; barcodes and diagrams; bottleneck stability) | Edelsbrunner, Letscher and Zomorodian (2002); Zomorodian and Carlsson (2005); Cohen-Steiner, Edelsbrunner and Harer (2007); Chazal, de Silva and Oudot (2014) | No lens (1b, 1c), no cover (1d), no clustering within cover elements (1e), no graph of clusters (1f). Shares only 1a and the use of a metric. | Mature open-source implementations (Ripser, MIT licence; GUDHI, MIT licence). No blocking patent identified; landscape search outstanding (item 4). | **Built in 0.5** (`ph.vietoris_rips`), strongest option. |
+| **Network-native persistent homology** (filtrations of a weighted network, for example tax-routing cost between jurisdictions) | Horak, Maletić and Rajković (2009); Petri and others (2014) | As persistent homology; the input is a network distance, not a feature matrix. | As above. | **Built in 0.5** as the `routing_cost` input of the same engine. |
+| **Ball Mapper** (cover by balls around a landmark net; graph of balls that share points) | Dłotko (2019), arXiv preprint, not peer reviewed so far as is known | No lens (1b, 1c), but a cover (by balls), membership and a graph joining overlapping cover elements remain; 1d and 1f arguably present, 1e in substance (each ball is one node). Equivalence argument for the missing lens is plausible. | Landmark selection is the subject of other Ayasdi patents (US 10,216,828; US 11,397,753; US 12,032,602), which must be read before any landmark method is used. | **Deferred** until the landmark patents have been read; candidate second alternative. |
+| **Exact Reeb graphs and contour trees** | Carr, Snoeyink and Axen (2003); Biasotti and others (2008) | Uses a scalar function (lens-like) but no cover or clustering; needs a simplicial or manifold domain. | None identified. | **Not planned**: jurisdiction data are not samples of a manifold; the scalar function reintroduces a lens choice. |
+| **UMAP with HDBSCAN** (embedding plus density clustering) | McInnes, Healy and Melville (2018), arXiv preprint with a peer-reviewed software paper; Campello, Moulavi and Sander (2013) | No cover and no graph of clusters; the embedding is a projection used for display and clustering. | BSD licences. | **Not planned** for 0.5: stochastic (seed dependent), no stability guarantee comparable to persistence; possible later as a comparison method. |
+| **Mapper with lenses not computed by matrix-vector multiplication** (option (e)) | Singh, Mémoli and Carlsson (2007) | Keeps 1b and 1d to 1f; avoids 1c only if "matrix-vector multiplication" is construed narrowly; the closest to equivalence and the most exposed to a Festo analysis. | Patent in force in the United States. | **Not planned** (weakest). |
+
+**Conditions for the alternatives.**
+1. *Design constraints are part of the specification.* Each alternative's specification lists the claim elements it must not contain (for persistent homology, constraints D1 to D5 in `docs/specs/ph_vietoris_rips.md`), and tests check the constraints that can be checked in code (for example, that results do not depend on a display projection).
+2. *Display projections are display only.* Where a page shows observations in two dimensions (classical multidimensional scaling), the projection is never used to build a cover, clusters or a graph, and is labelled approximate.
+3. *Status track.* The alternatives are reproductions of published mathematical methods applied to the project's declared feature matrices; they carry the reproduction ladder. Promotion to `verified` needs the author's check of the specification and the differential tests against an independent implementation.
+4. *Before public distribution:* (a) the author confirms the reasoning in this section; (b) a landscape search of the Ayasdi and SymphonyAI portfolios and of persistence-related US patents is completed and recorded in the IP note; (c) the patent's maintenance-fee status is checked (IP note s 1). Until then the executable is distributed only privately.
 
 ---
 
@@ -446,8 +475,9 @@ The table in 10.2 is kept for reference. From 0.3 the order is:
 |---|---|---|
 | 0.3 | **Tax routing, method first.** Phase 3 for van 't Riet and Lejour (specification, feasibility); the tax-rule tables needed by the reproduction variant (domestic rates and relief method, directional treaty withholding, directional relief overrides); the reference engine; live route explorer with scenario overrides and pinning. | Engine at `implemented` with every hand-calculated fixture, a brute-force differential test and property tests passing; promotion to `verified` once the author has checked the specification against the source. |
 | 0.4 | Phase 3 for Garcia-Bernardo and others and for the patent (IP gate); conduit and sink engine; reading modes. **Delivered** (engine at `implemented`; IP decision open). | As 10.2, Phases 3 and 4. |
-| 0.5 | Author checks of both draft specifications and promotion to `verified`; IP decision; remaining Phase 5 rule layer (eligibility, coding template); model comparison page. | Both engines `verified`; IP decision recorded. |
-| 0.5 onwards | As 10.2, Phases 5 (remaining rule layer: eligibility, coding template), 6 to 9. | As 10.2. |
+| 0.5 | **Alternative topological method (2.4).** Alternatives recorded (s 9.4); specification and engine for persistent homology with the FeatureMatrix and a network-native input; Topology page with live exploration; the patent-method engine kept at `interface`. | Engine at `implemented` with hand-calculated fixtures, an independent rank-based check of Betti numbers, the stability property and (where installed) a differential test against Ripser passing; design constraints tested. |
+| 0.6 | Author checks of the three draft specifications and promotion to `verified`; IP decision; remaining Phase 5 rule layer (eligibility, coding template); model comparison page. | Engines `verified`; IP decision recorded. |
+| 0.6 onwards | As 10.2, Phases 5 (remaining rule layer: eligibility, coding template), 6 to 9. | As 10.2. |
 
 **Why this order.** Contracts and the first executable (Phase 1) come before engines so that three engines do not produce three designs and packaging problems surface early, not at 1.0. Specification and feasibility for all three methods (Phase 3) precede engine work because data licensing or the patent may change which engine is worth building first. Replication sits with real data (Phase 7), so earlier gates require only `verified`.
 
@@ -502,9 +532,10 @@ Unsigned PyInstaller executables commonly trigger Windows SmartScreen warnings a
 
 1. Author checks of `docs/specs/vtrl2018_tax_routing.md` (CPB Discussion Paper 349, pp 7 to 10 and 13 to 18, and the journal version) and `docs/specs/gb2017_conduits_sinks.md` (Methods, Eqs 1 to 5); resolve the open questions; promote each engine to `verified` if its fixtures still pass.
 1a. Author's decision on the IP gate (`docs/IP_GATE_US10417262.md` s 5), after checking the patent's maintenance-fee record.
+1b. Author check of `docs/specs/ph_vietoris_rips.md` and of the reasoning in s 9.4; landscape search before any public distribution (s 9.4, item 4); read the landmark patents before Ball Mapper is considered.
 2. Choose the licence (s 4.6); create the `v0.1.0` and `v0.3.0` tags (tag pushes are not available from the build session).
 3. Physical Windows smoke test of the CI-built executable (s 11.1).
-4. Phase 3 for the Garcia-Bernardo method and the patent IP gate (0.4).
+4. Release 0.6 (s 10.3).
 5. Obtain the JAF Rule Bench 1.0 read-me and specification so that the shared formats match the current JAF build.
 
 ---
@@ -559,6 +590,14 @@ Unsigned PyInstaller executables commonly trigger Windows SmartScreen warnings a
 | A30 | s 10.2, Phase 3 | Requiring all three specifications before any engine delays an engine whose feasibility is independent of the others. | Method-by-method Phase 3 (s 10.3); the reason for the original rule (licensing and the patent could reorder engines) does not affect the routing engine. |
 | A31 | s 9.2 | Separability was framed as an open technical question although the source answers it by assumption. | Resolved from the source (s 9.2); path-dependent credit is an extension. |
 | A32 | s 3.1 | "Specified" did not distinguish a reviewed specification from an automated transcription. | Draft specifications cap the engine at `implemented` (s 0.0, item 5). |
+
+### A.4 Issues in version 2.3 (resolved in 2.4)
+
+| # | Location in v2.3 | Issue | Resolution in 2.4 |
+|---|---|---|---|
+| A33 | s 5.2 FeatureMatrix | A matrix built from engine outputs had to cite an earlier run record, so a live preview could never use one, and a run would depend on another run having been made first. | In-run derivation with recorded engine identifiers, versions, parameters and the matrix hash; the outputs are deterministic, so replay reproduces them. |
+| A34 | s 9.3, s 10.2 Phase 6 | Topological analysis was tied to one patented pipeline, so the whole method family depended on a single IP decision. | Alternatives assessed (s 9.4); the patent engine kept behind its gate; persistent homology built under stated design constraints. |
+| A35 | s 9.3 | The gate's scope ("any TDA code") would also block methods that recite none of the claimed elements. | Scope clarified: the gate governs the patented pipeline and Mapper-type methods; other methods go through s 9.4. |
 
 ---
 
