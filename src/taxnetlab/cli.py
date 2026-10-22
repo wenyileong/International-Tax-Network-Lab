@@ -119,6 +119,13 @@ def cmd_selftest(args: argparse.Namespace) -> int:
         rows = gb["outputs"]["jurisdictions"] if gb.get("executed") else []
         check(gb.get("executed") and gb["outcome"] == "ok", "conduits and sinks live preview computes")
         check(abs(sum(r["value_in"] - r["value_out"] for r in rows)) < 1e-6, "conduits and sinks: net value flows balance")
+        ph = api.preview("ph.vietoris_rips", did, {})
+        check(ph.get("executed") and ph["outcome"] == "ok", "persistent homology live preview computes")
+        h0 = [r for r in ph["outputs"]["diagram"] if r["dimension"] == 0]
+        check(sum(r["essential"] for r in h0) == 1 and len(h0) == len(ph["outputs"]["points"]),
+              "persistent homology: one essential cluster, one H0 bar per jurisdiction")
+        ph_run = api.run({"engine_id": "ph.vietoris_rips", "dataset_id": did, "parameters": {"metric": "manhattan"}})
+        check(ph_run["executed"] and api.replay(ph_run["record"]["run_id"])["match"], "pinned persistent homology run replays")
 
         server = AppServer(api, find_port(18766))
         t = threading.Thread(target=server.serve_forever, daemon=True)

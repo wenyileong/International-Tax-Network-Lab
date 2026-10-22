@@ -827,6 +827,234 @@
     await compute();
   };
 
+  // ------------------------------------------------------------------ topology (persistent homology; plan v2.4, s 9.4)
+  const PH_ENGINE = "ph.vietoris_rips";
+  // Must match taxnetlab.features.CATALOGUE (checked by a test).
+  const PH_FEATURES = ["cit", "dividend_wht", "mean_applicable_wht", "treaty_count", "log_gdp", "outward_links", "inward_links",
+    "vtrl_btwns", "vtrl_mean_shop", "gb_sink_centrality", "gb_conduit_out"];
+  const H_COLOURS = ["#2563eb", "#f97316"];
+  PAGES.topology = async function (root) {
+    header(root, "topology.title", "topology.lede");
+    if (needDataset(root)) return;
+    const eng = S.engines.find((e) => e.engine_id === PH_ENGINE);
+    if (!eng) return;
+    const d = Object.fromEntries(eng.parameters.map((p) => [p.name, p.default]));
+    const saved = (() => { try { return JSON.parse(recall("topology." + S.datasetId) || "null"); } catch (e) { return null; } })();
+    const C = Object.assign({ input: d.input, features: d.features.split(","), scaling: d.scaling, metric: d.metric, symmetrise: d.symmetrise,
+      loops: d.max_dimension >= 1, influence: d.influence, scale: null }, saved || {});
+    const select = (values, value) => { const s = el("select", { class: "select" }, values.map((v) => el("option", { value: v, text: t("choice." + v) }))); s.value = value; return s; };
+    const inputSel = select(["features", "routing_cost"], C.input), scalingSel = select(["zscore", "minmax", "none"], C.scaling);
+    const metricSel = select(["euclidean", "manhattan", "chebyshev"], C.metric), symSel = select(["max", "mean"], C.symmetrise);
+    const boxes = Object.fromEntries(PH_FEATURES.map((f) => [f, el("input", { type: "checkbox", checked: C.features.includes(f) })]));
+    const loops = el("input", { type: "checkbox", checked: !!C.loops }), infl = el("input", { type: "checkbox", checked: !!C.influence });
+    const scaleS = el("input", { type: "range", min: 0, max: 1, step: 0.001, class: "slider", "aria-label": t("topology.scale") });
+    const scaleV = el("output", { class: "mono" });
+    const status = el("p", { class: "muted small", style: "min-height:1.4em" });
+    const question = el("textarea", { rows: 2, "data-i18n-placeholder": "runs.question_ph", placeholder: t("runs.question_ph") });
+    const pinBtn = el("button", { class: "btn", i18n: "routes.pin", onclick: pin });
+    const field = (key, ...kids) => el("label", { class: "field" }, [el("span", { i18n: key }), ...kids]);
+    const check = (box, key) => el("label", { class: "field inline" }, [box, el("span", { i18n: key })]);
+    const featureBox = el("fieldset", { class: "field plain-fieldset" }, [el("legend", { i18n: "param.features" }),
+      ...PH_FEATURES.map((f) => check(boxes[f], "topology.f." + f))]);
+    const featureFields = el("div", {}, [featureBox, field("param.scaling", scalingSel), field("param.metric", metricSel)]);
+    const symField = field("param.symmetrise", symSel);
+    const small = S.dataset.jurisdictions.length < 10;
+    const makeBtn = el("button", { class: "btn btn-ghost", i18n: "topology.make_world", onclick: makeWorld });
+    root.append(el("div", { class: "live-grid" }, [
+      el("div", { class: "card live-panel" }, [
+        el("h2", { i18n: "topology.settings" }),
+        field("topology.scale", el("div", { class: "slider-row" }, [scaleS, scaleV])),
+        el("p", { class: "muted small", i18n: "topology.scale_note" }),
+        field("param.input", inputSel), featureFields, symField,
+        check(loops, "topology.loops"), check(infl, "param.influence"),
+        el("div", { class: "spacer" }), status, el("p", { class: "muted small", i18n: "routes.exploratory_note" }), question,
+        el("div", { style: "height:8px" }), pinBtn,
+        el("p", { class: "muted small", i18n: "topology.ip_note" })]),
+      el("div", { class: "grid" }, [
+        small ? el("div", { class: "card" }, [el("p", { i18n: "topology.small_world" }), makeBtn]) : null,
+        el("div", { class: "card" }, [el("div", { class: "headline", id: "ph-head" }), el("h2", { i18n: "topology.map" }), guide("topology.map"),
+          el("div", { class: "plot tall", id: "ph-map" })]),
+        el("div", { class: "grid grid-2" }, [
+          el("div", { class: "card" }, [el("h2", { i18n: "topology.diagram" }), guide("topology.diagram"), el("div", { class: "plot", id: "ph-diagram" })]),
+          el("div", { class: "card" }, [el("h2", { i18n: "topology.barcode" }), guide("topology.barcode"), el("div", { class: "plot", id: "ph-barcode" })])]),
+        el("div", { class: "grid grid-2" }, [
+          el("div", { class: "card" }, [el("h2", { i18n: "topology.betti" }), guide("topology.betti"), el("div", { class: "plot short", id: "ph-betti" })]),
+          el("div", { class: "card" }, [el("h2", { i18n: "topology.influence" }), guide("topology.influence"), el("div", { class: "plot short", id: "ph-influence" })])]),
+        el("div", { class: "card" }, [el("h2", { i18n: "topology.table" }), el("div", { id: "ph-table" })]),
+      ])]));
+    let seq = 0, timer = null, R = null, selected = null;
+    const params = () => ({ input: inputSel.value, features: PH_FEATURES.filter((f) => boxes[f].checked).join(","),
+      scaling: scalingSel.value, metric: metricSel.value, symmetrise: symSel.value, max_dimension: loops.checked ? 1 : 0, influence: infl.checked });
+    const scale = () => Number(scaleS.value);
+    function sync() {
+      featureFields.hidden = inputSel.value !== "features"; symField.hidden = inputSel.value === "features";
+      scaleV.textContent = fmt(scale(), 3);
+      const p = params();
+      store("topology." + S.datasetId, JSON.stringify({ input: p.input, features: p.features.split(","), scaling: p.scaling, metric: p.metric,
+        symmetrise: p.symmetrise, loops: loops.checked, influence: infl.checked, scale: R ? scale() : C.scale }));
+    }
+    function changed() { sync(); clearTimeout(timer); timer = setTimeout(compute, 60); }
+    [inputSel, scalingSel, metricSel, symSel, loops, infl, ...Object.values(boxes)].forEach((x) => x.addEventListener("change", changed));
+    scaleS.addEventListener("input", () => { sync(); if (R) drawScale(); });
+    async function compute() {
+      const my = ++seq;
+      const p = params();
+      if (p.input === "features" && !p.features) { status.replaceChildren(el("span", { class: "err-text", i18n: "topology.need_feature" })); return; }
+      status.textContent = t("routes.computing");
+      try {
+        const res = await api("POST", `engines/${PH_ENGINE}/preview`, { dataset_id: S.datasetId, parameters: p });
+        if (my !== seq) return;
+        if (!res.executed || res.outcome !== "ok") {
+          status.replaceChildren(el("span", { class: "err-text", text: res.executed ? t("outcome." + res.outcome) + "  ·  " + res.warnings.join(" ") : t("runs.blocked") }));
+          if (!res.executed) document.getElementById("ph-table").replaceChildren(issuesList(res.validation));
+          return;
+        }
+        status.textContent = t("routes.status", { ms: res.cached ? t("routes.cached") : fmt(res.elapsed_ms, 0) + " ms", status: t("status." + res.status) })
+          + (res.warnings.length ? "  ·  " + res.warnings.join(" ") : "");
+        // A new distance scale (input, features, scaling, metric) resets the view scale to a sensible default.
+        const geom = JSON.stringify([p.input, p.features, p.scaling, p.metric, p.symmetrise]);
+        const first = !R || R.geom !== geom, restore = !R;
+        R = res; R.geom = geom;
+        R.sum = Object.fromEntries(res.outputs.summary.map((r) => [r.measure, r.value]));
+        R.maxD = Math.max(1e-9, ...res.outputs.distances.map((r) => r.distance));
+        const top = res.outputs.diagram.find((r) => r.dimension === 1 && !r.essential);
+        if (selected) selected = res.outputs.diagram.find((r) => r.feature_id === selected.feature_id && r.birth_simplex === selected.birth_simplex) || null;
+        scaleS.max = R.maxD; scaleS.step = R.maxD / 400;
+        const savedScale = restore && C.scale !== null && C.scale !== undefined ? C.scale : null;
+        const wanted = !first ? scale() : savedScale !== null ? savedScale : top ? (top.birth + top.death) / 2 : R.maxD / 3;
+        scaleS.value = Math.min(R.maxD, Math.max(0, wanted));
+        sync();
+        drawStatic(); drawScale();
+      } catch (e) { if (my === seq) fail(e); }
+    }
+    const marks = () => watermark([t("wm.exploratory"), R.status !== "verified" ? t("wm.unverified") : null, statusWatermark()]);
+    const alive = (r, e) => r.birth <= e && (r.death === null || e < r.death);
+    function select_(row) {
+      selected = row;
+      if (row && row.dimension === 1) scaleS.value = row.death === null ? row.birth : (row.birth + row.death) / 2;
+      sync(); drawScale();
+    }
+    function bindClick(node, fn) {
+      node._tnlClick = fn;
+      if (!node._tnlBound) { node.on("plotly_click", (ev) => node._tnlClick && node._tnlClick(ev)); node._tnlBound = true; }
+    }
+    function drawStatic() {
+      const rows = R.outputs.diagram;
+      // influence
+      const inf = R.outputs.influence.slice().sort((a, b) => (b.bottleneck_h1 ?? 0) - (a.bottleneck_h1 ?? 0) || (b.bottleneck_h0 ?? 0) - (a.bottleneck_h0 ?? 0));
+      const infNode = document.getElementById("ph-influence");
+      if (!inf.length) { Plotly.purge(infNode); infNode.replaceChildren(el("p", { class: "empty", i18n: "topology.no_influence" })); applyI18n(infNode); }
+      else {
+        if (infNode.querySelector("p.empty")) infNode.replaceChildren();
+        const tr = [{ type: "bar", name: t("topology.h0"), x: inf.map((r) => r.jurisdiction_id), y: inf.map((r) => r.bottleneck_h0), marker: { color: H_COLOURS[0] },
+          hovertemplate: "%{x}: %{y:.4f}<extra>H0</extra>" }];
+        if (R.parameters.max_dimension >= 1) tr.push({ type: "bar", name: t("topology.h1"), x: inf.map((r) => r.jurisdiction_id), y: inf.map((r) => r.bottleneck_h1),
+          marker: { color: H_COLOURS[1] }, hovertemplate: "%{x}: %{y:.4f}<extra>H1</extra>" });
+        plot(infNode, tr, { barmode: "group", legend: { orientation: "h", y: -0.3 }, margin: { l: 56, r: 24, t: 34, b: 86 }, xaxis: { tickangle: -60, tickfont: { size: 10 } }, yaxis: { title: { text: t("topology.axis.bottleneck") } }, annotations: marks() },
+          { name: "influence", columns: ["jurisdiction_id", "bottleneck_h0", "bottleneck_h1", "rank_h1"], rows: inf });
+      }
+      document.getElementById("ph-table").replaceChildren(renderTable(["feature_id", "dimension", "birth", "death", "persistence", "essential",
+        "birth_simplex", "death_simplex", "representative_cycle", "members"], rows, (r) => select_(r)));
+    }
+    function drawScale() {
+      const e = scale(), rows = R.outputs.diagram, m = marks();
+      const pts = R.outputs.points.filter((p) => p.included);
+      const idx = Object.fromEntries(pts.map((p, i) => [p.jurisdiction_id, i]));
+      const parent = pts.map((_, i) => i);
+      const find = (x) => { while (parent[x] !== x) { parent[x] = parent[parent[x]]; x = parent[x]; } return x; };
+      const close = R.outputs.distances.filter((r) => r.distance <= e);
+      close.forEach((r) => { const a = find(idx[r.a]), b = find(idx[r.b]); if (a !== b) parent[Math.max(a, b)] = Math.min(a, b); });
+      const roots = [...new Set(pts.map((_, i) => find(i)))].sort((a, b) => a - b);
+      const compColour = Object.fromEntries(roots.map((r, k) => [r, PALETTE[k % PALETTE.length]]));
+      const b0 = roots.length, b1 = rows.filter((r) => r.dimension === 1 && alive(r, e)).length;
+      const h1 = rows.filter((r) => r.dimension === 1);
+      document.getElementById("ph-head").replaceChildren(el("div", { class: "kpis" }, [
+        kpiCard(t("topology.k.clusters"), fmt(b0, 0), H_COLOURS[0]),
+        kpiCard(t("topology.k.loops_now"), R.parameters.max_dimension >= 1 ? fmt(b1, 0) : "–", H_COLOURS[1]),
+        kpiCard(t("topology.k.loops"), R.parameters.max_dimension >= 1 ? fmt(h1.length, 0) : "–", "#d946ef"),
+        kpiCard(t("topology.k.persistent"), h1.length ? `${h1[0].feature_id} · ${fmt(h1[0].persistence, 3)}` : t("conduits.none"), "#14b8a6"),
+        kpiCard(t("topology.k.influential"), R.sum.most_influential_h1 === "none" ? t("conduits.none") : R.sum.most_influential_h1, "#f59e0b")]));
+      // map: Rips graph at the scale, clusters by colour, a selected loop traced
+      const shown = close.slice(0, 4000), ex = [], ey = [];
+      shown.forEach((r) => { const a = pts[idx[r.a]], b = pts[idx[r.b]]; ex.push(a.x, b.x, null); ey.push(a.y, b.y, null); });
+      const traces = [{ type: "scatter", mode: "lines", x: ex, y: ey, line: { color: "rgba(100,116,139,0.35)", width: 1 }, hoverinfo: "skip", name: t("topology.edges") }];
+      if (selected && selected.representative_cycle) {
+        const cyc = selected.representative_cycle.split(">").filter((c) => c in idx);
+        traces.push({ type: "scatter", mode: "lines", x: cyc.map((c) => pts[idx[c]].x), y: cyc.map((c) => pts[idx[c]].y), name: selected.feature_id,
+          line: { color: H_COLOURS[1], width: 5 }, hoverinfo: "skip" });
+      }
+      traces.push({ type: "scatter", mode: "markers+text", x: pts.map((p) => p.x), y: pts.map((p) => p.y), text: pts.map((p) => p.jurisdiction_id),
+        textposition: "top center", customdata: pts.map((p) => p.jurisdiction_id), name: t("topology.points"),
+        marker: { size: 16, color: pts.map((_, i) => compColour[find(i)]), line: { width: 1.5, color: "#ffffff" } },
+        hovertemplate: "<b>%{customdata}</b><extra></extra>" });
+      plot(document.getElementById("ph-map"), traces, { showlegend: false,
+        xaxis: { zeroline: false, showticklabels: false, title: { text: t("topology.axis.projection") + "<br><span style='font-size:11.5px'>"
+          + t("topology.stress", { s: fmt(R.sum.projection_stress, 3) }) + "  ·  " + t("topology.scale_is", { e: fmt(e, 3) }) + "</span>" } },
+        yaxis: { zeroline: false, showticklabels: false, scaleanchor: "x" }, annotations: m },
+      { name: "rips_graph_at_scale", columns: ["a", "b", "distance"], rows: close });
+      // persistence diagram
+      const fin = rows.filter((r) => !r.essential), top = Math.max(R.maxD, ...fin.map((r) => r.death)) * 1.08;
+      const dg = [0, 1].filter((k) => k === 0 || R.parameters.max_dimension >= 1).map((k) => {
+        const rs = rows.filter((r) => r.dimension === k);
+        return { type: "scatter", mode: "markers", name: t(k ? "topology.h1" : "topology.h0"), x: rs.map((r) => r.birth), y: rs.map((r) => (r.essential ? top : r.death)),
+          customdata: rs.map((r) => [r.feature_id, r.persistence === null ? "∞" : fmt(r.persistence, 4), r.representative_cycle || r.members || ""]),
+          marker: { color: H_COLOURS[k], size: rs.map((r) => (selected && r.feature_id === selected.feature_id ? 16 : 10)), symbol: rs.map((r) => (r.essential ? "triangle-up" : "circle")),
+            line: { width: 1.5, color: rs.map((r) => (alive(r, e) ? "#111827" : "#ffffff")) }, opacity: 0.9 },
+          hovertemplate: `<b>%{customdata[0]}</b><br>${t("col.birth")}: %{x:.4f}<br>${t("col.persistence")}: %{customdata[1]}<br>%{customdata[2]}<extra></extra>` };
+      });
+      const dNode = document.getElementById("ph-diagram");
+      plot(dNode, dg, { xaxis: { title: { text: t("col.birth") }, range: [-top * 0.03, top * 1.02] }, yaxis: { title: { text: t("col.death") }, range: [-top * 0.03, top * 1.04] },
+        shapes: [{ type: "line", x0: 0, y0: 0, x1: top, y1: top, line: { color: cssVar("--muted"), width: 1 } },
+          { type: "rect", x0: -top, x1: e, y0: e, y1: top * 1.04, fillcolor: "rgba(249,115,22,0.08)", line: { width: 0 } },
+          { type: "line", x0: e, x1: e, y0: e, y1: top * 1.04, line: { color: H_COLOURS[1], dash: "dot", width: 1.5 } },
+          { type: "line", x0: -top, x1: e, y0: e, y1: e, line: { color: H_COLOURS[1], dash: "dot", width: 1.5 } },
+          { type: "line", x0: 0, x1: top, y0: top, y1: top, line: { color: cssVar("--line"), dash: "dash", width: 1 } }],
+        annotations: m.concat([{ x: top, y: top, xanchor: "right", yanchor: "bottom", text: t("topology.infinite"), showarrow: false, font: { size: 11, color: cssVar("--muted") } }]) },
+      { name: "persistence_diagram", columns: ["feature_id", "dimension", "birth", "death", "persistence", "essential"], rows });
+      bindClick(dNode, (ev) => { const p = ev.points && ev.points[0]; if (p && p.customdata) select_(rows.find((r) => r.feature_id === p.customdata[0])); });
+      // barcode: every loop and the 30 longest-lived clusters
+      const bars = rows.filter((r) => r.dimension === 1).concat(rows.filter((r) => r.dimension === 0).slice(0, 30)).reverse();
+      const bNode = document.getElementById("ph-barcode");
+      plot(bNode, [{ type: "bar", orientation: "h", y: bars.map((r) => r.feature_id), base: bars.map((r) => r.birth), x: bars.map((r) => (r.essential ? top : r.death) - r.birth),
+        marker: { color: bars.map((r) => H_COLOURS[r.dimension]), opacity: bars.map((r) => (alive(r, e) ? 1 : 0.35)),
+          line: { width: bars.map((r) => (selected && r.feature_id === selected.feature_id ? 2.5 : 0)), color: "#111827" } },
+        customdata: bars.map((r) => [r.feature_id, r.essential ? "∞" : fmt(r.death, 4), r.representative_cycle || r.members || ""]),
+        hovertemplate: `<b>%{customdata[0]}</b><br>${t("col.birth")}: %{base:.4f}<br>${t("col.death")}: %{customdata[1]}<br>%{customdata[2]}<extra></extra>` }],
+      { showlegend: false, bargap: 0.25, xaxis: { title: { text: t("topology.scale") }, range: [0, top] }, yaxis: { automargin: true, tickfont: { size: 10.5 } },
+        shapes: [{ type: "line", xref: "x", yref: "paper", x0: e, x1: e, y0: 0, y1: 1, line: { color: H_COLOURS[1], dash: "dot", width: 1.5 } }], annotations: m },
+      { name: "barcode", columns: ["feature_id", "dimension", "birth", "death", "persistence"], rows: bars });
+      bindClick(bNode, (ev) => { const p = ev.points && ev.points[0]; if (p && p.customdata) select_(rows.find((r) => r.feature_id === p.customdata[0])); });
+      // Betti curves
+      const bc = R.outputs.betti.slice().sort((a, b) => a.scale - b.scale);
+      const xs = bc.map((r) => r.scale).concat([top]), b0s = bc.map((r) => r.b0), b1s = bc.map((r) => r.b1);
+      b0s.push(b0s[b0s.length - 1]); b1s.push(b1s[b1s.length - 1]);
+      const bt = [{ type: "scatter", mode: "lines", line: { shape: "hv", color: H_COLOURS[0], width: 2.5 }, name: t("topology.b0"), x: xs, y: b0s }];
+      if (R.parameters.max_dimension >= 1) bt.push({ type: "scatter", mode: "lines", line: { shape: "hv", color: H_COLOURS[1], width: 2.5 }, name: t("topology.b1"), x: xs, y: b1s, yaxis: "y2" });
+      plot(document.getElementById("ph-betti"), bt, { legend: { orientation: "h", y: -0.34 }, margin: { l: 56, r: 48, t: 34, b: 78 }, xaxis: { title: { text: t("topology.scale") }, range: [0, top] }, yaxis: { title: { text: t("topology.b0") }, rangemode: "tozero" },
+        yaxis2: { title: { text: t("topology.b1") }, overlaying: "y", side: "right", rangemode: "tozero", showgrid: false, dtick: 1 },
+        shapes: [{ type: "line", xref: "x", yref: "paper", x0: e, x1: e, y0: 0, y1: 1, line: { color: H_COLOURS[1], dash: "dot", width: 1.5 } }], annotations: m },
+      { name: "betti_curves", columns: ["scale", "b0", "b1"], rows: bc });
+    }
+    function kpiCard(label, value, colour) { return el("div", { class: "card kpi", style: "--c:" + colour }, [el("div", { class: "value", text: value }), el("div", { class: "label", text: label })]); }
+    async function makeWorld() {
+      makeBtn.disabled = true;
+      try {
+        const res = await api("POST", "datasets/synthetic", { seed: 7, n_jurisdictions: 20, n_groups: 12, entities_per_group: 6, cross_holdings: 4 });
+        toast(t("data.generated", { name: res.name }));
+        await loadDatasets(res.dataset_id); await route();
+      } catch (e) { fail(e); } finally { makeBtn.disabled = false; }
+    }
+    async function pin() {
+      pinBtn.disabled = true;
+      try {
+        const res = await api("POST", "runs", { engine_id: PH_ENGINE, dataset_id: S.datasetId, parameters: params(), research_question: question.value });
+        toast(res.executed ? t("routes.pinned", { id: res.record.run_id }) : t("runs.blocked"));
+      } catch (e) { fail(e); } finally { pinBtn.disabled = false; }
+    }
+    sync();
+    await compute();
+  };
+
   // ------------------------------------------------------------------ data
   const TABLES = ["sources", "jurisdictions", "jurisdiction_attributes", "entities", "ownership", "illustrative_tax_edges",
     "tax_domestic", "tax_treaty_dividends", "tax_relief_overrides"];

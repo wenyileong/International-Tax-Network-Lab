@@ -2,7 +2,7 @@
 
 A local-first research workbench for analysing international tax and corporate ownership networks. It is built to implement published methods faithfully and keep them separate, to record exactly how every result was produced, and to let a researcher inspect, compare and export results to a standard fit for peer-reviewed work.
 
-**Release 0.4.** Core contracts, data layer, network views, run records with replay, a minimalist offline interface and a Windows executable (0.2), plus the **optimal tax routing engine** of van 't Riet and Lejour with **live exploration**: move a tax rate or a treaty and watch the cheapest routes, treaty-shopping gains and conduit rankings recompute. Release 0.4 adds the **conduits and sinks engine** of Garcia-Bernardo and others with its own live page, and **Plain English and Technical reading modes**. Both method engines are at *implemented* status: they pass every test against their specifications and become *verified* once those specifications have been checked against the source papers. The topological method (US Patent 10,417,262 B2) stays at *interface* status pending the author's decision on the IP gate (`docs/IP_GATE_US10417262.md`). See `docs/PROJECT_PLAN_v2_3.md` and `docs/BUILD_0_4_STATUS.md`.
+**Release 0.5.** Core contracts, data layer, network views, run records with replay, a minimalist offline interface and a Windows executable (0.2), the **optimal tax routing engine** of van 't Riet and Lejour with **live exploration** (0.3), and the **conduits and sinks engine** of Garcia-Bernardo and others with **Plain English and Technical reading modes** (0.4). Release 0.5 adds a **persistent homology engine** and a live **Topology** page: the shape of jurisdictions in tax-attribute space or in tax-routing cost (clusters and loops across all scales, how long each persists, and which jurisdictions the structure depends on). Persistent homology is one of the alternatives to the patented topological method recorded in plan s 9.4; the patent-method engine (US Patent 10,417,262 B2) stays at *interface* status pending the author's decision on the IP gate (`docs/IP_GATE_US10417262.md`). The method engines are at *implemented* status: they pass every test against their specifications and become *verified* once those specifications have been checked by the author. See `docs/PROJECT_PLAN_v2_4.md` and `docs/BUILD_0_5_STATUS.md`.
 
 > The data shipped with the software are synthetic. Every jurisdiction, company, value and rate is fictional. The software gives no tax or legal advice, and network position, centrality or clustering is not evidence of avoidance, misconduct or illegality.
 
@@ -45,6 +45,7 @@ A run specification is a small JSON file:
 | Matrix | Holder-jurisdiction by held-jurisdiction heatmap under a stated aggregation rule. |
 | Tax routes | Live explorer for the optimal tax routing model: choose a host and a home jurisdiction, change corporate tax, withholding, relief and treaty rates with sliders, and see the cheapest route, its legs, the treaty-shopping gain for every pair and conduit centrality update at once. Sweeps plot a route's tax across a rate's range. Live results are exploratory previews; "Save as run" records the state, including every change, as a replayable run. |
 | Conduits and sinks | Live explorer for Garcia-Bernardo and others: move the ownership, sink and conduit thresholds and see which jurisdictions are sinks (where value ends, relative to GDP) and conduits (through which it passes), on a conduit map, a sink-centrality chart and a flow diagram of three-country chains. |
+| Topology | Persistent homology: a scale slider shows which jurisdictions group together and which loops exist at that scale; a persistence diagram, barcode and Betti curves show every cluster and loop across all scales; an influence chart shows which jurisdictions the loops depend on. Inputs: a chosen set of tax and network features (scaled, with a choice of distance) or the cost of the cheapest tax route. |
 | Data | Table viewer and CSV download, validation report, synthetic generator and CSV import. |
 | Runs | Execute an engine, inspect outputs, calculation trace and full record, replay, download. |
 | Methods | Every registered engine with its status, boundary and next step. |
@@ -98,9 +99,9 @@ All interface text is loaded from `src/taxnetlab/web/locales/<tag>.json`. Englis
 
 ## Project documents
 
-* `docs/PROJECT_PLAN_v2_3.md`: plan, status ladders, phases and release gates.
-* `docs/BUILD_0_4_STATUS.md`, `docs/BUILD_0_3_STATUS.md` and `docs/BUILD_0_2_STATUS.md`: what each release contains, the pre-build logical evaluations and test results.
-* `docs/IP_GATE_US10417262.md`: research note on the patent for the author's decision.
+* `docs/PROJECT_PLAN_v2_4.md`: plan, status ladders, phases and release gates; s 9.4 compares alternative topological methods.
+* `docs/BUILD_0_5_STATUS.md`, `docs/BUILD_0_4_STATUS.md`, `docs/BUILD_0_3_STATUS.md` and `docs/BUILD_0_2_STATUS.md`: what each release contains, the pre-build logical evaluations and test results.
+* `docs/IP_GATE_US10417262.md`: research note on the patent for the author's decision, including option (f), the alternative methods.
 * `docs/METHOD_RECONSTRUCTION_REGISTER.md`: verification checklists for the three published methods.
 * `docs/specs/`: specifications of implemented engines.
 * `CHANGELOG.md`.

@@ -123,7 +123,7 @@ def test_every_static_key_used_in_interface_exists():
 FAMILY_PREFIXES = ("status.", "outcome.", "table.", "rule.", "view.", "track.", "col.", "dir.", "level.", "banner.",
                    "gen.", "integrity.", "network.colour.", "overview.band.", "entity_type.", "issue.", "choice.",
                    "param.", "output.", "measure.demo.", "relief.", "routes.basis.", "routes.c.", "routes.ov.", "routes.wa.",
-                   "routes.w.", "routes.part.", "routes.k.", "routes.", "guide.", "conduits.", "mode.")
+                   "routes.w.", "routes.part.", "routes.k.", "routes.", "guide.", "conduits.", "mode.", "topology.f.")
 
 
 def test_dynamic_key_families_complete():
@@ -145,6 +145,9 @@ def test_dynamic_key_families_complete():
         "routes.c.": {"btwns", "strct", "occur"}, "routes.wa.": {"unweighted", "gdp"}, "routes.w.": {"gdp_product", "unweighted"},
         "param.": {p.name for e in __import__("taxnetlab.engines", fromlist=["list_engines"]).list_engines() for p in e.parameters},
         "output.": {o for e in __import__("taxnetlab.engines", fromlist=["list_engines"]).list_engines() for o in e.outputs},
+        "topology.f.": set(__import__("taxnetlab.features", fromlist=["CATALOGUE"]).CATALOGUE),
+        "choice.": {c for e in __import__("taxnetlab.engines", fromlist=["list_engines"]).list_engines()
+                    for p in e.parameters for c in (p.choices or ())},
     }
     missing = [p + k for p, ks in families.items() for k in ks if p + k not in strings]
     assert not missing, missing
@@ -224,3 +227,10 @@ def test_mode_variants_have_a_base_key():
     orphans = [k for k in strings if k.endswith((".plain", ".tech")) and not k.startswith("guide.")
                and k.rsplit(".", 1)[0] not in strings]
     assert not orphans, orphans
+
+
+def test_topology_feature_list_matches_catalogue():
+    from taxnetlab.features import CATALOGUE
+    js = (WEB / "app.js").read_text(encoding="utf-8")
+    listed = re.search(r"const PH_FEATURES = \[([^\]]+)\]", js).group(1)
+    assert re.findall(r'"([a-z0-9_]+)"', listed) == list(CATALOGUE)

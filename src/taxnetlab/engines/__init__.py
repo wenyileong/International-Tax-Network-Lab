@@ -5,6 +5,7 @@ from __future__ import annotations
 from taxnetlab.engines.base import Engine, EngineResult, EngineSpec, SpecificationNotValidatedError
 from taxnetlab.engines.demo import LinkSummaryEngine
 from taxnetlab.engines.gb2017 import ConduitsSinksEngine
+from taxnetlab.engines.ph import PersistentHomologyEngine
 from taxnetlab.engines.placeholders import ScalableTdaEngine
 from taxnetlab.engines.vtrl2018 import TaxRoutingEngine
 
@@ -18,7 +19,8 @@ def register(engine: Engine) -> None:
     _ENGINES[eid] = engine
 
 
-for _engine in (LinkSummaryEngine(), ConduitsSinksEngine(), TaxRoutingEngine(), ScalableTdaEngine()):
+for _engine in (LinkSummaryEngine(), ConduitsSinksEngine(), TaxRoutingEngine(), PersistentHomologyEngine(),
+                ScalableTdaEngine()):
     register(_engine)
 
 

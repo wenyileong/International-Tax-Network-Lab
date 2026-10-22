@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.5.0 (22 October 2026)
+
+Plan v2.4. See `docs/BUILD_0_5_STATUS.md`.
+
+* Alternative topological methods recorded (plan s 9.4; IP note option (f) and s 5A). The patent-method engine stays at `interface` behind the IP gate.
+* Persistent homology engine (`ph.vietoris_rips`, implemented) with specification `docs/specs/ph_vietoris_rips.md`; FeatureMatrix with derived features and provenance; network-native routing-cost input.
+* Topology page with live exploration.
+* Existing dataset ids and workspaces are unchanged.
+
 ## 0.4.0 (22 October 2026)
 
 Plan v2.3. See `docs/BUILD_0_4_STATUS.md`.
