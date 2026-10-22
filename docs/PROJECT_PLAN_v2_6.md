@@ -556,6 +556,7 @@ Unsigned PyInstaller executables commonly trigger Windows SmartScreen warnings a
 2. Choose the licence (s 4.6); create the `v0.1.0` and `v0.3.0` tags (tag pushes are not available from the build session).
 3. Physical Windows smoke test of the CI-built executable (s 11.1).
 4. Release 0.7 (s 10.3).
+4a. Possible data source: the A-share Company Intelligence scraper (Chinese listed groups' shareholders and subsidiaries); assessment and converter design in `docs/ASHARE_IMPORT_NOTE.md` (recorded, not started).
 5. Obtain the JAF Rule Bench 1.0 read-me and specification so that the shared formats match the current JAF build.
 
 ---
