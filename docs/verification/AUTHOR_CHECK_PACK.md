@@ -164,3 +164,17 @@
 - [ ] 6. Rank correlations
 - [ ] 7. Limits
 - [ ] 8. Tests
+
+## sensitivity.sweep
+
+**Specification:** `docs/specs/sensitivity.md` (version 0.1)
+**Check against:** plan s 3.2 and s 6.3.
+
+
+### Sections to read through
+
+- [ ] 1. Inputs
+- [ ] 2. Computation
+- [ ] 3. Outputs
+- [ ] 4. Limits
+- [ ] 5. Tests

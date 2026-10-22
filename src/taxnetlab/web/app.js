@@ -140,9 +140,26 @@
     const st = S.dataset && S.dataset.data_status;
     return st === "synthetic" ? t("wm.synthetic") : st === "mixed" ? t("wm.mixed") : null;
   }
+  // Publication style (plan Phase 8): white background, serif type, black ink; watermarks are kept.
+  async function publicationFigure(gd, name) {
+    const box = el("div", { style: "position:fixed;left:-10000px;top:0;width:1200px;height:800px" });
+    document.body.append(box);
+    try {
+      const ax = { gridcolor: "#d9d9d9", zerolinecolor: "#999", linecolor: "#111", tickfont: { color: "#111" }, title: {} };
+      const layout = JSON.parse(JSON.stringify(gd.layout));
+      Object.assign(layout, { paper_bgcolor: "#ffffff", plot_bgcolor: "#ffffff", width: 1200, height: 800,
+        font: { family: "Times New Roman, Times, serif", size: 16, color: "#111111" } });
+      for (const k of Object.keys(layout)) if (/^[xy]axis\d*$/.test(k)) layout[k] = Object.assign({}, layout[k], ax, { title: layout[k].title });
+      await Plotly.newPlot(box, JSON.parse(JSON.stringify(gd.data)), layout, { staticPlot: true });
+      await Plotly.downloadImage(box, { format: "svg", width: 1200, height: 800, filename: name + "_publication" });
+    } catch (e) { fail(e); } finally { Plotly.purge(box); box.remove(); }
+  }
+
   function plot(node, traces, layout, csv) {
     const svgIcon = { width: 1000, height: 1000, path: "M200 100h400l200 200v600H200z M600 100v200h200 M330 520h340M330 640h340M330 760h220" };
-    const buttons = [{ name: t("chart.download_svg"), icon: svgIcon, click: (gd) => Plotly.downloadImage(gd, { format: "svg", filename: csv ? csv.name : "chart" }) }];
+    const buttons = [{ name: t("chart.download_svg"), icon: svgIcon, click: (gd) => Plotly.downloadImage(gd, { format: "svg", filename: csv ? csv.name : "chart" }) },
+      { name: t("chart.download_publication"), icon: { width: 1000, height: 1000, path: "M150 150h700v700H150z M250 650l150-200 120 140 90-110 140 170" },
+        click: (gd) => publicationFigure(gd, csv ? csv.name : "chart") }];
     if (csv) buttons.push({ name: t("chart.download_csv"), icon: Plotly.Icons.disk, click: () => download(csv.name + ".csv", csvOf(csv.columns, csv.rows)) });
     const full = baseLayout(layout);
     const wm = (full.annotations || []).find((a) => a._wm);
@@ -1396,7 +1413,7 @@
       paramBox, el("label", { class: "field" }, [el("span", { i18n: "runs.question" }), question]), el("div", { class: "spacer" }), btn,
       el("p", { class: "muted small", i18n: "runs.interface_note" })]));
     root.append(el("div", { class: "spacer" }), result, el("div", { class: "spacer" }), el("div", { class: "card" }, [el("h2", { i18n: "runs.history" }), history]),
-      el("div", { class: "spacer" }), expectationCard());
+      el("div", { class: "spacer" }), expectationCard(), el("div", { class: "spacer" }), reproduceCard());
     async function refreshHistory() {
       const list = await api("GET", "runs");
       if (!list.length) { history.replaceChildren(el("p", { class: "empty", i18n: "runs.none" })); return; }
@@ -1407,6 +1424,25 @@
     }
     await refreshHistory();
   };
+
+  // Reproduce a run from an export package (plan s 7.3 acceptance criterion).
+  function reproduceCard() {
+    const file = el("input", { type: "file", accept: ".zip,application/zip" }), out = el("div", { class: "small" });
+    const btn = el("button", { class: "btn", i18n: "pkg.reproduce", onclick: async () => {
+      if (!file.files[0]) { toast(t("coding.choose_file")); return; }
+      btn.disabled = true;
+      try {
+        const buf = new Uint8Array(await file.files[0].arrayBuffer());
+        let bin = ""; for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode.apply(null, buf.subarray(i, i + 0x8000));
+        const r = await api("POST", "reproduce", { zip_base64: btoa(bin) });
+        out.replaceChildren(el("p", { class: r.reproduced ? "ok-text" : "err-text", text: r.reproduced ? t("pkg.ok", { id: r.new_run_id }) : t("pkg.failed", { reason: r.reason }) }),
+          r.note ? el("p", { class: "muted", text: r.note }) : "");
+        await loadDatasets(S.datasetId);
+      } catch (e) { fail(e); } finally { btn.disabled = false; }
+    } });
+    return el("div", { class: "card" }, [el("h2", { i18n: "pkg.title" }), el("p", { class: "muted small", i18n: "pkg.lede" }),
+      el("div", { class: "controls" }, [el("label", { class: "field" }, [el("span", { i18n: "pkg.file" }), file]), btn]), out]);
+  }
 
   // Expectation register (plan s 7.5): list frozen entries; freeze a draft JSON file.
   function expectationCard() {
@@ -1469,7 +1505,9 @@
             try { const r = await api("POST", `runs/${rec.run_id}/replay`, {}); replayOut.className = r.match ? "ok-text small" : "err-text small"; replayOut.textContent = r.match ? t("runs.replay_match") : t("runs.replay_differs", { reason: r.reason }); }
             catch (e) { fail(e); }
           } }),
-          el("a", { class: "btn btn-ghost", href: `/api/runs/${rec.run_id}/record.json`, i18n: "runs.download_record" })])]),
+          el("a", { class: "btn btn-ghost", href: `/api/runs/${rec.run_id}/record.json`, i18n: "runs.download_record" }),
+          el("a", { class: "btn btn-ghost", href: `/api/runs/${rec.run_id}/report.html`, i18n: "runs.download_report" }),
+          el("a", { class: "btn btn-ghost", href: `/api/runs/${rec.run_id}/package.zip`, i18n: "runs.download_package" })])]),
       replayOut, replicationBox(rec),
       el("p", { class: "small" }, [el("span", { class: "badge", style: "--c:" + (STATUS_COLOURS[rec.engine.status] || "#64748b"), text: t("status." + rec.engine.status) }), "  ",
         t("track." + rec.engine.track), "  ·  ", t("runs.outcome") + ": ", el("strong", { text: t("outcome." + rec.outcome) }), "  ·  ", rec.dataset.name, " (", t("status." + rec.dataset.data_status), ")"]),
@@ -1477,7 +1515,8 @@
     ];
     if (rec.warnings.length) parts.push(el("ul", { class: "small" }, rec.warnings.map((w) => el("li", { text: w }))));
     for (const [name, out] of Object.entries(outputs || {})) {
-      if (!out.columns.includes("jurisdiction_id")) {
+      // Charts only for one row per jurisdiction; long tables (one row per draw or reading) are shown as tables.
+      if (!out.columns.includes("jurisdiction_id") || new Set(out.rows.map((r) => r.jurisdiction_id)).size !== out.rows.length) {
         parts.push(el("h2", { style: "margin-top:16px", text: tOr("output." + name, name) }),
           renderTable(out.columns, out.rows.slice(0, 500)),
           out.rows.length > 500 ? el("p", { class: "muted small", text: t("data.truncated", { shown: 500, total: out.rows.length }) }) : "",

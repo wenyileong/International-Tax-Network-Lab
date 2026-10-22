@@ -14,6 +14,9 @@
   "ph.vietoris_rips": {
    "_outcome": "blocked"
   },
+  "sensitivity.sweep": {
+   "_outcome": "invalid_input"
+  },
   "vtrl2018.tax_routing": {
    "_outcome": "blocked"
   }
@@ -41,6 +44,13 @@
   },
   "ph.vietoris_rips": {
    "_outcome": "blocked"
+  },
+  "sensitivity.sweep": {
+   "_outcome": "ok",
+   "draws": "6a72b4ba938f13d68db1467c582dc60f81b1e9d9a91820ba52357e1a860bfe50",
+   "robustness": "5d3210d3882d8755de4e6f2bd055a6ee47e931c1a90c22d27489705ef9aebb2b",
+   "summary": "093a64adaea870af0831dce51a3fb5cb6865d101b841fa566ae9c2b85e4b4743",
+   "values": "474702966ab9b7da8e9a1f0ab32942fd3d47b77e6854d96eac3f8bbfbcd9b53f"
   },
   "vtrl2018.tax_routing": {
    "_outcome": "blocked"
@@ -76,6 +86,13 @@
    "influence": "a9b72da875aa6b81a729ed2ee10ffe04dcc36e12206dd68af0e807e0161cd19d",
    "points": "5264acae33846143ecb62b1a8b4639ec6bd414f3cd0964b67d60550d43de32b3",
    "summary": "c40e19e174f73a03557470ab42d088ecfbb78d5de72cdb8e198d2e1c27652d40"
+  },
+  "sensitivity.sweep": {
+   "_outcome": "ok",
+   "draws": "6a72b4ba938f13d68db1467c582dc60f81b1e9d9a91820ba52357e1a860bfe50",
+   "robustness": "a0fa8c32aaf1e4103f7fba6a0abaedd87f723aae110b241fdff70e39db18efd5",
+   "summary": "35e0b3dadcc1b8da0642f2205cf8d775080a405d1d98c9d59f42d03cef373bee",
+   "values": "3e2d4c2c54564bea6fbeec5b5c7e2081fbe36831e9a6b5ccf73ff401f8ebd4d6"
   },
   "vtrl2018.tax_routing": {
    "_outcome": "ok",
@@ -116,6 +133,13 @@
    "points": "986afbd9cf0ac58129ce57bbc9574105e53aa5afb5064c910d76b82087f7af0a",
    "summary": "9eaa4b189d70578edb0a0c004faa1da3bbb7fb40483d12a1c9164c8624cec146"
   },
+  "sensitivity.sweep": {
+   "_outcome": "ok",
+   "draws": "6a72b4ba938f13d68db1467c582dc60f81b1e9d9a91820ba52357e1a860bfe50",
+   "robustness": "dc1f19d05ff7a6d65217e784db961230d0d9c3fc83bf4f550c42817e20e9be27",
+   "summary": "cdafd5ecca2ccc11f622c352fce6fbb3aa868cdda721c2bfa30d0b89b8636b94",
+   "values": "89a036086376a743c7a7b1ae883ce6924f712b609ecf4cc7d4af1668d364bf09"
+  },
   "vtrl2018.tax_routing": {
    "_outcome": "ok",
    "centrality": "2fbf33d907a3ca143f009203dea59dc278ebbb014728c9f689c051444cdc8dd7",
@@ -151,6 +175,9 @@
    "influence": "9fbdda330d82e392154bdf8f5037d46691ad77790b64a09e531714920f11ed60",
    "points": "383d2dc3ca9e4bb39cf1a1e9d920cfe4ff26999d44f330a11518c8a1d07ea7f0",
    "summary": "5da7e7cc82af354ae73500404ac848d860ccf3105eb0d345caf20ae39378eb70"
+  },
+  "sensitivity.sweep": {
+   "_outcome": "invalid_input"
   },
   "vtrl2018.tax_routing": {
    "_outcome": "ok",

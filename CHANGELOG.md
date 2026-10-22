@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.8.0 (22 October 2026)
+
+See `docs/BUILD_0_8_STATUS.md`.
+
+* Sensitivity sweeps with robustness shares (`sensitivity.sweep`).
+* Run reports (static HTML) and export packages by reproducibility tier; reproduction from a package.
+* Publication-style SVG export for every chart.
+
 ## 0.7.0 (22 October 2026)
 
 See `docs/BUILD_0_7_STATUS.md`.

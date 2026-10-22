@@ -8,6 +8,8 @@
     taxnetlab template illustrative|real-sample [--jurisdictions NLD,LUX] [--out FILE]
     taxnetlab import FILE.zip|FOLDER [--name TEXT]
     taxnetlab expect list | freeze FILE --by NAME | check ENTRY_ID --run RUN_ID
+    taxnetlab export RUN_ID [--include-outputs] [--report FILE.html]
+    taxnetlab reproduce PACKAGE.zip
     taxnetlab selftest
     taxnetlab version
 """
@@ -137,6 +139,25 @@ def cmd_expect(args: argparse.Namespace) -> int:
     return 2
 
 
+def cmd_export(args: argparse.Namespace) -> int:
+    api = _api(args)
+    inc = True if args.include_outputs else None
+    data, tier = api.export_package(args.run_id, inc)
+    out = Path(args.out or f"run_{args.run_id}_tier{tier}.zip")
+    out.write_bytes(data)
+    print(f"wrote {out} (tier {tier})")
+    if args.report:
+        Path(args.report).write_text(api.run_report(args.run_id), encoding="utf-8")
+        print(f"wrote {args.report}")
+    return 0
+
+
+def cmd_reproduce(args: argparse.Namespace) -> int:
+    rep = _api(args).reproduce_package(Path(args.package).read_bytes())
+    print(json.dumps(rep, indent=2))
+    return 0 if rep.get("reproduced") else 1
+
+
 def cmd_version(args: argparse.Namespace) -> int:
     from taxnetlab.buildinfo import environment
 
@@ -195,6 +216,10 @@ def cmd_selftest(args: argparse.Namespace) -> int:
         check(imported["saved"], "illustrative coding template imports")
         job = api.jobs.wait(api.jobs.submit({"engine_id": "demo.link_summary", "dataset_id": did})["job_id"], 60)
         check(job["state"] == "done" and api.replay(job["run_id"])["match"], "background job runs and replays")
+        pkg, tier = api.export_package(pinned["record"]["run_id"])
+        other = Api(Workspace(Path(tmp) / "second researcher"))
+        check(tier == "C" and other.reproduce_package(pkg)["reproduced"], "export package reproduces in another workspace")
+        check("<script" not in api.run_report(pinned["record"]["run_id"]), "run report is static HTML")
 
         server = AppServer(api, find_port(18766))
         t = threading.Thread(target=server.serve_forever, daemon=True)
@@ -278,6 +303,17 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--by", help="who freezes the entry")
     p.add_argument("--run", help="run id to check")
     p.set_defaults(func=cmd_expect)
+
+    p = sub.add_parser("export", parents=[common], help="export a run as a package by reproducibility tier")
+    p.add_argument("run_id")
+    p.add_argument("--out")
+    p.add_argument("--include-outputs", action="store_true", help="tier B: include outputs (only if the licence permits)")
+    p.add_argument("--report", help="also write the HTML run report to this file")
+    p.set_defaults(func=cmd_export)
+
+    p = sub.add_parser("reproduce", parents=[common], help="re-run a packaged run and compare output hashes")
+    p.add_argument("package")
+    p.set_defaults(func=cmd_reproduce)
 
     p = sub.add_parser("version", help="show version and environment")
     p.set_defaults(func=cmd_version)

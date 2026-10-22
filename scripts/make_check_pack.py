@@ -27,6 +27,7 @@ SPECS = [
      "the peer-reviewed sources in s 9 of the specification (standard definitions)"),
     ("eligibility (rule layer)", "docs/specs/eligibility.md", "plan s 5.2; the treaty provisions coded in the data"),
     ("compare.models", "docs/specs/compare_models.md", "plan s 6.3 and s 8"),
+    ("sensitivity.sweep", "docs/specs/sensitivity.md", "plan s 3.2 and s 6.3"),
 ]
 
 HEADER = """# Author check pack
@@ -79,7 +80,7 @@ Complete this record when the specification has been checked against its source 
 **Items corrected (with the commit that changed the specification):**
 **Items still open:**
 """
-RECORD_ENGINES = {"vtrl2018.tax_routing", "gb2017.conduits_sinks", "ph.vietoris_rips", "compare.models"}
+RECORD_ENGINES = {"vtrl2018.tax_routing", "gb2017.conduits_sinks", "ph.vietoris_rips", "compare.models", "sensitivity.sweep"}
 
 
 if __name__ == "__main__":

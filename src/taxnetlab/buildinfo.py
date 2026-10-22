@@ -82,3 +82,9 @@ def environment() -> dict[str, Any]:
         "built_utc": manifest.get("built_utc"),
         "git": git_state(),
     }
+
+
+def software_citation() -> str:
+    """OSCOLA-style citation of this version of the software (the authoritative metadata is CITATION.cff)."""
+    return (f"Wen Yi Leong, International Tax Network Lab (version {__version__}, 2026) "
+            "<https://orcid.org/0009-0005-5691-1270>")

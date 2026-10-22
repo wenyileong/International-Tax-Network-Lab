@@ -239,6 +239,15 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(200, api.run_record(p[1]))
             if len(p) == 4 and p[0] == "runs" and p[2] == "outputs" and p[3].endswith(".csv"):
                 return self._csv(api.run_output_csv(p[1], p[3][:-4]), f"{p[1]}_{p[3]}")
+            if len(p) == 3 and p[0] == "runs" and p[2] == "report.html":
+                body = api.run_report(p[1]).encode("utf-8")
+                return self._send(200, body, "text/html; charset=utf-8",
+                                  {"Content-Disposition": f'attachment; filename="run_{p[1]}_report.html"'})
+            if len(p) == 3 and p[0] == "runs" and p[2] == "package.zip":
+                inc = _q(qs, "include_outputs")
+                data, tier = api.export_package(p[1], None if inc is None else inc == "true")
+                return self._send(200, data, "application/zip",
+                                  {"Content-Disposition": f'attachment; filename="run_{p[1]}_tier{tier}.zip"'})
             if len(p) == 3 and p[0] == "runs" and p[2] == "record.json":
                 rec = api.run_record(p[1])["record"]
                 rec.pop("_integrity", None)
@@ -271,6 +280,15 @@ class Handler(BaseHTTPRequestHandler):
                     return self._json(200, api.import_zip(str(body.get("name") or ""), data))
                 except zipfile.BadZipFile:
                     raise ValueError("the file is not a ZIP archive") from None
+            if p == ["reproduce"]:
+                import base64
+                import binascii
+
+                try:
+                    data = base64.b64decode(str(body.get("zip_base64") or ""), validate=True)
+                    return self._json(200, api.reproduce_package(data))
+                except (binascii.Error, zipfile.BadZipFile, KeyError) as exc:
+                    raise ValueError(f"not a valid export package: {exc}") from None
             if p == ["expectations"]:
                 return self._json(200, api.freeze_expectation(body.get("entry") or {}, str(body.get("frozen_by") or "")))
             if p == ["replications"]:

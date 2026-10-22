@@ -8,6 +8,7 @@ from taxnetlab.engines.demo import LinkSummaryEngine
 from taxnetlab.engines.gb2017 import ConduitsSinksEngine
 from taxnetlab.engines.ph import PersistentHomologyEngine
 from taxnetlab.engines.placeholders import ScalableTdaEngine
+from taxnetlab.engines.sensitivity import SensitivityEngine
 from taxnetlab.engines.vtrl2018 import TaxRoutingEngine
 
 _ENGINES: dict[str, Engine] = {}
@@ -21,7 +22,7 @@ def register(engine: Engine) -> None:
 
 
 for _engine in (LinkSummaryEngine(), ConduitsSinksEngine(), TaxRoutingEngine(), PersistentHomologyEngine(),
-                ModelComparisonEngine(), ScalableTdaEngine()):
+                ModelComparisonEngine(), SensitivityEngine(), ScalableTdaEngine()):
     register(_engine)
 
 

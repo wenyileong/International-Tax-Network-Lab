@@ -17,7 +17,7 @@ from taxnetlab.runs import _serialise_outputs
 from taxnetlab.synthetic import build_0_1_fixture, generate
 
 APPROVED = Path(__file__).with_name("approved.json")
-ENGINES = ("demo.link_summary", "vtrl2018.tax_routing", "gb2017.conduits_sinks", "ph.vietoris_rips", "compare.models")
+ENGINES = ("demo.link_summary", "vtrl2018.tax_routing", "gb2017.conduits_sinks", "ph.vietoris_rips", "compare.models", "sensitivity.sweep")
 # Tables added after a snapshot was approved are removed before comparison, so that the datasets the
 # snapshots were taken on are reproduced exactly.
 LATER_TABLES = ("tax_treaty_conditions",)

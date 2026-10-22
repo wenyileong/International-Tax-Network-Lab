@@ -256,6 +256,26 @@ class Api:
             out.append({k: r.get(k) for k in ("run_id", "entry_id", "verdict", "passed", "total", "checked_utc", "data_status")})
         return out
 
+    # ------------------------------------------------------------------ reports and packages (Phase 8)
+    def run_report(self, run_id: str) -> str:
+        from taxnetlab.buildinfo import software_citation
+        from taxnetlab.reports import run_report_html
+
+        return run_report_html(runs.load_record(self.ws, run_id), self._outputs(run_id), software_citation())
+
+    def export_package(self, run_id: str, include_outputs: bool | None = None) -> tuple[bytes, str]:
+        from taxnetlab.exports import package
+
+        data, tier = package(self.ws, run_id, include_outputs)
+        self.ws.exports_dir.mkdir(parents=True, exist_ok=True)
+        (self.ws.exports_dir / f"{run_id}_tier{tier}.zip").write_bytes(data)
+        return data, tier
+
+    def reproduce_package(self, data: bytes) -> dict[str, Any]:
+        from taxnetlab.exports import reproduce
+
+        return reproduce(self.ws, data)
+
     def _outputs(self, run_id: str) -> dict[str, Any]:
         import csv
         import io
