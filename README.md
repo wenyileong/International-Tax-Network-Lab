@@ -80,6 +80,8 @@ Notebook users: `pip install -e ".[notebook]"` and open `notebooks/01_research_w
 
 ## Building the executable
 
+On Windows, the simplest route is to double-click `scripts\build_exe.bat` (Python 3.12 must be installed). It creates a private build environment from the hash-locked requirements, builds `dist\taxnetlab.exe` and runs its self-test.
+
 CI builds `taxnetlab.exe` on a Windows runner from the hash-locked environment in `requirements/windows-build.lock`, runs `taxnetlab.exe selftest` on the result and publishes it as an artefact (and as a Release asset for tags `v*`). To build locally on Windows:
 
 ```bat
