@@ -4,7 +4,9 @@ bundled guide, logging, colour contrast and the installer script."""
 import importlib.util
 import json
 import re
+import tempfile
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -61,7 +63,16 @@ def test_every_documented_route_answers(server_url_token):
                               "row": "FIC_A", "column": "outbound_links", "expected": 1, "statistic": "absolute", "threshold": 100}],
              "decision_rule": {"discrepancies_if_share_at_least": 0.5}}
     assert call("POST", "/api/expectations", {"entry": entry, "frozen_by": "test"})[0] == 200
-    subs = {"{tag}": "en-GB", "{dataset_id}": did, "{table}": "ownership", "{run_id}": rid, "{name}": "jurisdiction_summary",
+    from rscore import demo
+
+    release = demo.build(Path(tempfile.mkdtemp()) / "release")
+    status, body = call("POST", "/api/suite/import", {"release": str(release), "project_name": "route test"})
+    assert status == 200, body
+    project = json.loads(body)["path"]
+    status, body = call("POST", "/api/suite/bring", {"project": project})
+    real = json.loads(body)["dataset_id"]  # real ISO jurisdictions: a completion template exists
+    subs = {"FILE.sqlite": urllib.parse.quote(project), "{dataset_id}/completion_template": real + "/completion_template",
+            "{tag}": "en-GB", "{dataset_id}": did, "{table}": "ownership", "{run_id}": rid, "{name}": "jurisdiction_summary",
             "{job_id}": jid, "{entry_id}": "route-test", "{engine_id}": "demo.link_summary"}
     for method, path, _ in ROUTES:
         if path == "/api/quit":
@@ -123,3 +134,24 @@ def test_installer_script_refers_to_existing_files():
         if src.startswith("dist\\"):
             continue
         assert (ROOT / src.replace("\\", "/")).exists(), src
+
+
+def test_simplified_chinese_is_complete_and_consistent():
+    from taxnetlab import i18n
+    from taxnetlab.api import Api
+
+    en = i18n.load_locale("en-GB")["strings"]
+    zh = i18n.load_locale("zh-Hans")
+    assert zh["_meta"]["complete"] and zh["_meta"]["fallback"] == "en-GB"
+    assert set(zh["strings"]) == set(en), sorted(set(en) ^ set(zh["strings"]))
+    ph = lambda s: sorted(re.findall(r"\{(\w+)\}", s))  # noqa: E731
+    assert [k for k in en if ph(en[k]) != ph(zh["strings"][k])] == []
+    assert not any("—" in v for v in zh["strings"].values())  # house style: no em dashes
+    g = Api.guide("zh-Hans")
+    assert g["user_guide"].startswith("# 用户指南") and g["methods"].startswith("# 方法说明")
+    e = Api.guide("en-GB")
+    for name in ("user_guide", "methods"):
+        heads = lambda t: len(re.findall(r"^## ", t, flags=re.M))  # noqa: E731
+        assert heads(g[name]) == heads(e[name]), f"{name}: the translation has a different number of sections"
+    assert Api.guide("xx-NONE")["user_guide"].startswith("# User guide")
+    assert Api.guide("../etc")["user_guide"].startswith("# User guide")

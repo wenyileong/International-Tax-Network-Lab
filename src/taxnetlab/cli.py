@@ -1,6 +1,9 @@
 """Command-line interface. ``taxnetlab`` with no arguments starts the interface.
 
-    taxnetlab [serve] [--workspace DIR] [--port N] [--no-browser]
+    taxnetlab [serve] [--workspace DIR] [--port N] [--no-browser] [--import PATH] [--language TAG]
+    taxnetlab import-ashare RELEASE_FOLDER [--project FILE.sqlite | --project-name NAME] [--companies CODES]
+              [--assume-consolidated] [--accept-suggestions] [--min-confidence X] [--bring [--name TEXT]]
+    taxnetlab suite list | review PROJECT | choose PROJECT NAME=CODE ... | reimport PROJECT | bring PROJECT
     taxnetlab generate [--seed N] [--name TEXT]
     taxnetlab datasets
     taxnetlab run SPEC.json
@@ -46,8 +49,136 @@ def cmd_serve(args: argparse.Namespace) -> int:
     if created:
         print(f"Created a synthetic starter dataset ({created}).")
     print(f"Log file: {log_path}")
-    serve(api, port=args.port, open_browser=not args.no_browser)
+    try:
+        startup = handover(api, getattr(args, "import_path", None), getattr(args, "language", None))
+    except (ValueError, OSError, KeyError) as exc:
+        print(f"Could not open {args.import_path}: {exc}", file=sys.stderr)
+        startup = {"page": "suite"}
+    serve(api, port=args.port, open_browser=not args.no_browser, startup=startup)
     return 0
+
+
+def handover(api: Api, path: str | None, language: str | None) -> dict:
+    """What the interface opens on: a release folder, a suite project, a suite Lab export, a ZIP or CSV folder.
+
+    A release is only read, never imported, until the researcher has chosen the import options in the interface.
+    The interface language is the one given, otherwise ResearchSuite.exe's, if a saved choice does not exist.
+    """
+    from taxnetlab import i18n, suite
+
+    startup: dict = {}
+    tags = {loc["tag"] for loc in i18n.available_locales()}
+    if language:
+        lang = {"en": "en-GB", "zh": "zh-Hans", "zh-CN": "zh-Hans", "zh-Hans-CN": "zh-Hans"}.get(language, language)
+        if lang in tags:
+            startup.update(locale=lang, force_locale=True)
+    elif suite.suite_language() in tags:
+        startup["locale"] = suite.suite_language()
+    if not path:
+        return startup
+    p = Path(path.strip().strip('"')).expanduser()
+    if p.is_dir() and (p / "manifest.json").is_file():
+        startup.update(page="suite", release=str(p.resolve()))
+    elif p.is_file() and p.suffix.lower() in suite.PROJECT_SUFFIXES:
+        detail = api.suite.open_project(p)
+        startup.update(page="suite", project=detail["path"])
+    elif p.is_dir() and any(p.glob("*.csv")):
+        res = api.suite.import_export_folder(api, p)
+        if not res["saved"]:
+            raise ValueError("the tables did not validate; open the Data page for the report")
+        startup.update(page="overview", dataset_id=res["dataset_id"])
+    elif p.is_file() and p.suffix.lower() == ".zip":
+        res = api.import_zip(p.stem, p.read_bytes())
+        if not res["saved"]:
+            raise ValueError("the tables did not validate; open the Data page for the report")
+        startup.update(page="overview", dataset_id=res["dataset_id"])
+    else:
+        raise ValueError("expected an A-share release folder, a suite project (.sqlite), a folder of table CSV files "
+                         "or a ZIP")
+    return startup
+
+
+def _print_detail(d: dict) -> None:
+    print(f"project {d['name']}: {d['path']}")
+    print("  " + ", ".join(f"{k} {v}" for k, v in d["counts"].items() if v))
+    rep = d.get("report")
+    if not rep:
+        print("  no import yet")
+        return
+    sm = rep["summary"]
+    print(f"  latest import {rep['name']} (release {sm.get('release')})")
+    for t, n in sorted((sm.get("imported") or {}).items()):
+        print(f"    imported {t}: {n}")
+    for r in sm.get("rejected") or []:
+        print(f"    rejected {r['table']}: {r['rows']}  {r['reason']}")
+    for n in sm.get("notes") or []:
+        print(f"    note: {n}")
+    if rep["review"]:
+        print(f"  {len(rep['review'])} name(s) or place(s) need a jurisdiction:")
+        for r in rep["review"]:
+            print(f"    {r['name']!s:40} {r['status']:32} suggestion={r['suggestion'] or '-':8} rows={r['rows']} "
+                  f"chosen={r['chosen'] or '-'}")
+        print("  choose with: taxnetlab suite choose PROJECT \"NAME=CODE\" ...; then: taxnetlab suite reimport PROJECT")
+    if rep["revenue_conflicts"]:
+        print(f"  {len(rep['revenue_conflicts'])} revenue figure(s) disagree: see {rep['folder']}")
+
+
+def cmd_import_ashare(args: argparse.Namespace) -> int:
+    api = _api(args)
+    companies = [c for c in (args.companies or "").replace(";", ",").split(",") if c.strip()]
+    d = api.suite.import_release(args.project, args.release, project_name=args.project_name, companies=companies,
+                                 assume_consolidated=args.assume_consolidated, accept_suggestions=args.accept_suggestions,
+                                 min_confidence=args.min_confidence)
+    _print_detail(d)
+    if args.bring:
+        return _bring(api, d["path"], args.name)
+    return 0
+
+
+def _bring(api: Api, project: str, name: str | None) -> int:
+    res = api.suite.bring_into_lab(api, project, name)
+    for issue in res["validation"]["issues"]:
+        if issue["level"] != "info":
+            print(f"  {issue['level']}: {issue['code']}: {issue['message']}", file=sys.stderr)
+    if not res["saved"]:
+        print("Import into the Lab blocked.", file=sys.stderr)
+        return 2
+    print(f"{res['dataset_id']}  {res['name']}" + ("  (already in the workspace)" if res.get("already_present") else ""))
+    return 0
+
+
+def cmd_suite(args: argparse.Namespace) -> int:
+    api = _api(args)
+    b = api.suite
+    if args.action == "list":
+        for p in b.projects():
+            counts = p.get("counts") or {}
+            state = "missing" if not p["exists"] else ("damaged" if p.get("error") else "")
+            print(f"{p['origin']:7} {counts.get('entities', ''):>6} entities {counts.get('ownership', ''):>6} relations  "
+                  f"{p['path']} {state}")
+        return 0
+    if not args.target:
+        print("PROJECT (a .sqlite file) is required", file=sys.stderr)
+        return 2
+    if args.action == "review":
+        _print_detail(b.detail(args.target))
+        return 0
+    if args.action == "choose":
+        choices = {}
+        for item in args.choices:
+            if "=" not in item:
+                print(f"expected NAME=CODE, got {item!r}", file=sys.stderr)
+                return 2
+            name, code = item.rsplit("=", 1)
+            choices[name] = code
+        _print_detail(b.save_overrides(args.target, choices))
+        return 0
+    if args.action == "reimport":
+        _print_detail(b.reimport(args.target))
+        return 0
+    if args.action == "bring":
+        return _bring(api, args.target, args.name)
+    return 2
 
 
 def cmd_generate(args: argparse.Namespace) -> int:
@@ -225,6 +356,22 @@ def cmd_selftest(args: argparse.Namespace) -> int:
         other = Api(Workspace(Path(tmp) / "second researcher"))
         check(tier == "C" and other.reproduce_package(pkg)["reproduced"], "export package reproduces in another workspace")
         check("<script" not in api.run_report(pinned["record"]["run_id"]), "run report is static HTML")
+        from rscore import demo
+
+        from taxnetlab.suite import vendored as suite_vendored
+
+        release = demo.build(Path(tmp) / "ashare release")
+        detail = api.suite.import_release(None, release)
+        check(detail["counts"]["entities"] > 0 and len(api.suite.jurisdictions()) > 200,
+              "A-share release imported with the Research Suite core (registry data bundled)")
+        detail = api.suite.save_overrides(detail["path"], {"维尔京群岛": "VGB"})
+        detail = api.suite.reimport(detail["path"])
+        brought = api.suite.bring_into_lab(api, detail["path"])
+        ds = api.ws.load_dataset(brought["dataset_id"]) if brought["saved"] else None
+        check(ds is not None and "VGB" in {r["jurisdiction_id"] for r in ds.tables["jurisdictions"]},
+              "suite project brought into the Lab with the review choices applied")
+        check(demo.PERSON not in "".join(ds.csv_text(t) for t in ds.tables), "natural persons never reach the Lab")
+        check(suite_vendored().get("commit") is not None, "vendored core records its source commit")
 
         server = AppServer(api, find_port(18766))
         t = threading.Thread(target=server.serve_forever, daemon=True)
@@ -237,6 +384,13 @@ def cmd_selftest(args: argparse.Namespace) -> int:
             check(len(js) > 1_000_000, "bundled Plotly served offline")
             loc = json.loads(urllib.request.urlopen(base + "api/locales/en-GB", timeout=10).read())
             check(len(loc["strings"]) > 50, "locale strings served")
+            zh = json.loads(urllib.request.urlopen(base + "api/locales/zh-Hans", timeout=10).read())
+            check(zh["strings"]["nav.suite"] == "研究工具套件" and len(zh["strings"]) == len(loc["strings"]),
+                  "Simplified Chinese strings served")
+            guide = json.loads(urllib.request.urlopen(base + "api/guide?locale=zh-Hans", timeout=10).read())
+            check(guide["user_guide"].startswith("# 用户指南"), "Simplified Chinese guide served")
+            icon = urllib.request.urlopen(base + "icon.svg", timeout=10).read()
+            check(icon.startswith(b"<svg"), "interface icon served")
             view = json.loads(urllib.request.urlopen(base + f"api/datasets/{did}/view?view=value_flow", timeout=10).read())
             check(view["meta"]["direction"] == "held -> holder", "value-flow view reverses direction")
             req = urllib.request.Request(base + "api/runs", data=b"{}", method="POST",
@@ -269,7 +423,32 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("serve", parents=[common], help="start the interface (default)")
     p.add_argument("--port", type=int, default=None)
     p.add_argument("--no-browser", action="store_true")
+    p.add_argument("--import", dest="import_path", metavar="PATH",
+                   help="open on an A-share release folder, a suite project (.sqlite), a suite Lab export or a ZIP")
+    p.add_argument("--language", help="interface language, for example en-GB or zh-Hans")
     p.set_defaults(func=cmd_serve)
+
+    p = sub.add_parser("import-ashare", parents=[common],
+                       help="import an A-share Company Intelligence release with the Research Suite's converter")
+    p.add_argument("release", help="the release folder (holding manifest.json and csv/)")
+    p.add_argument("--project", help="an existing suite project (.sqlite); default: a new project in the workspace")
+    p.add_argument("--project-name", help="name of the new project (default: the release name)")
+    p.add_argument("--companies", help="security codes to import, comma-separated (default: all)")
+    p.add_argument("--assume-consolidated", action="store_true",
+                   help="treat revenue with no stated scope as consolidated")
+    p.add_argument("--accept-suggestions", action="store_true",
+                   help="accept holder jurisdictions suggested from names without review")
+    p.add_argument("--min-confidence", type=float, default=0.0, help="drop extracted rows below this confidence (0 to 1)")
+    p.add_argument("--bring", action="store_true", help="then import the project into the Lab as a dataset")
+    p.add_argument("--name", help="dataset name for --bring")
+    p.set_defaults(func=cmd_import_ashare)
+
+    p = sub.add_parser("suite", parents=[common], help="Research Suite projects: list, review, choose, reimport, bring")
+    p.add_argument("action", choices=("list", "review", "choose", "reimport", "bring"))
+    p.add_argument("target", nargs="?", help="the project file (.sqlite)")
+    p.add_argument("choices", nargs="*", help="choose: NAME=CODE pairs (an empty CODE removes a choice)")
+    p.add_argument("--name", help="dataset name for bring")
+    p.set_defaults(func=cmd_suite)
 
     p = sub.add_parser("generate", parents=[common], help="create a synthetic dataset")
     p.add_argument("--seed", type=int, default=17)

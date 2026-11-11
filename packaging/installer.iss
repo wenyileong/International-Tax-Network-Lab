@@ -1,6 +1,6 @@
 ; Inno Setup script for the per-user Windows installer (plan s 10.2, Phase 9; s 11).
 ; Build on Windows after dist\taxnetlab.exe exists:
-;   iscc /DAppVersion=1.0.0rc1 packaging\installer.iss
+;   iscc /DAppVersion=1.0.0rc2 packaging\installer.iss
 ; The installer needs no administrator rights: it installs under the user's local application folder,
 ; adds Start menu shortcuts and an uninstaller, and never touches the user's workspace (Documents\TaxNetLab).
 
@@ -29,6 +29,8 @@ ArchitecturesInstallIn64BitMode=x64compatible
 LicenseFile=..\LICENSE
 UninstallDisplayName=International Tax Network Lab {#AppVersion}
 SetupLogging=yes
+SetupIconFile=taxnetlab.ico
+UninstallDisplayIcon={app}\taxnetlab.exe
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
@@ -47,6 +49,11 @@ Name: "{group}\International Tax Network Lab"; Filename: "{app}\taxnetlab.exe"
 Name: "{group}\User guide"; Filename: "{app}\USER_GUIDE.txt"
 Name: "{group}\Uninstall International Tax Network Lab"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\International Tax Network Lab"; Filename: "{app}\taxnetlab.exe"; Tasks: desktopicon
+
+[Registry]
+; Lets ResearchSuite.exe and other tools find the Lab wherever it was installed (see docs/SUITE_INTEGRATION.md).
+Root: HKCU; Subkey: "Software\InternationalTaxNetworkLab"; ValueType: string; ValueName: "InstallDir"; ValueData: "{app}"; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\InternationalTaxNetworkLab"; ValueType: string; ValueName: "Version"; ValueData: "{#AppVersion}"
 
 [Run]
 Filename: "{app}\taxnetlab.exe"; Description: "{cm:LaunchProgram,International Tax Network Lab}"; Flags: nowait postinstall skipifsilent

@@ -123,7 +123,8 @@ def test_every_static_key_used_in_interface_exists():
 FAMILY_PREFIXES = ("status.", "outcome.", "table.", "rule.", "view.", "track.", "col.", "dir.", "level.", "banner.",
                    "gen.", "integrity.", "network.colour.", "overview.band.", "entity_type.", "issue.", "choice.",
                    "param.", "output.", "measure.demo.", "relief.", "routes.basis.", "routes.c.", "routes.ov.", "routes.wa.",
-                   "routes.w.", "routes.part.", "routes.k.", "routes.", "guide.", "conduits.", "mode.", "topology.f.", "compare.class.", "rep.verdict.", "glossary.status.")
+                   "routes.w.", "routes.part.", "routes.k.", "routes.", "guide.", "conduits.", "mode.", "topology.f.", "compare.class.", "rep.verdict.", "glossary.status.",
+                   "suite.col.", "suite.origin.", "suite.reason.", "suite.review_status.", "suite.table.", "prov.mode.")
 
 
 def test_dynamic_key_families_complete():
@@ -150,6 +151,12 @@ def test_dynamic_key_families_complete():
         "glossary.status.": {"interface", "specified", "implemented", "verified", "replicated", "replicated_with_discrepancies"},
         "rep.verdict.": {"replicated", "replicated_with_discrepancies", "not_replicated", "invalid"},
         "topology.f.": set(__import__("taxnetlab.features", fromlist=["CATALOGUE"]).CATALOGUE),
+        "suite.col.": {"name", "status", "suggestion", "rows", "choice"}, "suite.origin.": {"lab", "opened", "suite"},
+        "suite.reason.": set(__import__("taxnetlab.suite", fromlist=["REASONS"]).REASONS),
+        "suite.review_status.": {"place_unmatched", "place_ambiguous", "holder_jurisdiction_not_stated"},
+        "suite.table.": {"companies", "ownership_observations", "subsidiary_observations", "control_observations",
+                         "control_edges", "financial_facts"},
+        "prov.mode.": {"merge", "replace"},
         "choice.": {c for e in __import__("taxnetlab.engines", fromlist=["list_engines"]).list_engines()
                     for p in e.parameters for c in (p.choices or ())},
     }

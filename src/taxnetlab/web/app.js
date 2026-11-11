@@ -264,6 +264,8 @@
       { annotations: watermark([statusWatermark()]), yaxis: { title: { text: t("overview.axis.relations") } }, showlegend: false },
       { name: "relations_by_fraction_band", columns: ["band", "relations"], rows: labels.map((l, i) => [l, counts[i]]) });
 
+    const prov = provenanceCard(d);
+    if (prov) root.append(el("div", { class: "spacer" }), prov);
     root.append(el("div", { class: "spacer" }), el("div", { class: "card" }, [el("h2", { i18n: "data.validation" }), issuesList(d.validation)]));
   };
 
@@ -1257,7 +1259,7 @@
   }
   PAGES.guide = async function (root) {
     header(root, "guide.title", "guide.lede");
-    const g = await api("GET", "guide");
+    const g = await api("GET", "guide?locale=" + encodeURIComponent(S.locale));
     const measures = [];
     S.engines.forEach((e) => e.measures.forEach((m) => measures.push({ name: m.name, definition: m.definition, unit: m.unit, engine: e.display_name })));
     const statuses = ["interface", "specified", "implemented", "verified", "replicated", "replicated_with_discrepancies"];
@@ -1295,6 +1297,8 @@
       root.append(el("div", { class: "spacer" }), el("div", { class: "card" }, [el("h2", { i18n: "data.validation" }), issuesList(S.dataset.validation)]));
     }
     root.append(el("div", { class: "spacer" }));
+    const complete = completeForm();
+    if (complete) root.append(complete, el("div", { class: "spacer" }));
     root.append(el("div", { class: "grid grid-2" }, [synthForm(), importForm()]), el("div", { class: "spacer" }), codingForm());
   };
 
@@ -1305,6 +1309,7 @@
       el("thead", {}, [el("tr", {}, columns.map((c) => el("th", { text: tOr("col." + c, c) })))]),
       el("tbody", {}, rows.map((r) => el("tr", onRow ? { class: "clickable", onclick: () => onRow(r) } : {}, columns.map((c) => {
         const v = r[c];
+        if (typeof v === "string" && /^https?:\/\/\S+$/i.test(v)) return el("td", {}, [el("a", { href: v, target: "_blank", rel: "noopener noreferrer", text: v })]);
         return el("td", { class: isNum(v) ? "num" : "", text: v === null || v === undefined ? "" : typeof v === "boolean" ? t(v ? "common.yes" : "common.no") : isNum(v) ? fmt(v, 4) : String(v) });
       })))),
     ])]);
@@ -1618,11 +1623,279 @@
     root.append(el("div", { class: "spacer" }), el("div", { class: "card" }, [el("h2", { i18n: "about.notice_title" }), el("p", { class: "small", i18n: "about.notice" })]));
   };
 
+  // ------------------------------------------------------------------ Research Suite (A-share releases)
+  // The converter is the Research Suite's own (rscore, vendored and pinned), so that a release is converted here
+  // exactly as ResearchSuite.exe converts it. Paths are typed or pasted: a browser cannot hand a folder path over.
+  const cleanPath = (s) => String(s || "").trim().replace(/^["']|["']$/g, "");
+  let suiteJurs = null;
+  async function suiteJurisdictions() {
+    if (!suiteJurs) suiteJurs = await api("GET", "suite/jurisdictions");
+    return suiteJurs;
+  }
+  function reasonText(code) { return tOr("suite.reason." + code, code.replace(/_/g, " ")); }
+  function reviewStatus(s) { return tOr("suite.review_status." + String(s).replace(/\s+/g, "_"), s); }
+  function tableName(tb) { return tOr("table." + tb, tOr("suite.table." + tb, tb)); }
+  function busy(btn, on) { btn.disabled = on; btn.classList.toggle("busy", on); }
+
+  PAGES.suite = async function (root) {
+    header(root, "suite.title", "suite.lede");
+    const status = await api("GET", "suite");
+    const core = status.core;
+    root.append(el("p", { class: "muted small" }, [t("suite.core", { version: core.rscore_version, commit: (core.commit || "").slice(0, 7) }),
+      status.config_found ? "  ·  " + t("suite.config_found") : "  ·  " + t("suite.config_absent")]));
+
+    const projectBox = el("div");
+    // ---- release card
+    const relPath = el("input", { type: "text", class: "mono", style: "width:100%", value: S.suiteRelease || recall("suite.release") || "",
+      "data-i18n-placeholder": "suite.release_ph", placeholder: t("suite.release_ph") });
+    const relInfo = el("div");
+    const readBtn = el("button", { class: "btn btn-ghost", i18n: "suite.read", onclick: () => readRelease().catch(fail) });
+    async function readRelease() {
+      const path = cleanPath(relPath.value);
+      if (!path) { toast(t("suite.need_path")); return; }
+      busy(readBtn, true);
+      try {
+        const info = await api("POST", "suite/inspect", { release: path });
+        store("suite.release", path); S.suiteRelease = path;
+        relInfo.replaceChildren(releaseCard(info, status.projects));
+        applyI18n(relInfo);
+      } catch (e) { relInfo.replaceChildren(el("p", { class: "err-text", text: e.message })); } finally { busy(readBtn, false); }
+    }
+    root.append(el("div", { class: "card" }, [el("h2", { i18n: "suite.release_title" }), el("p", { class: "muted small", i18n: "suite.release_lede" }),
+      el("div", { class: "controls" }, [el("label", { class: "field", style: "flex:1 1 420px" }, [el("span", { i18n: "suite.release_folder" }), relPath]), readBtn]),
+      el("p", { class: "muted small", i18n: "suite.path_hint" }), relInfo]));
+    root.append(el("div", { class: "spacer" }));
+
+    function releaseCard(info, projects) {
+      const rc = info.row_counts || {};
+      const facts = [["suite.r.name", info.name], ["suite.r.created", info.created_utc || ""], ["suite.r.software", info.software || ""],
+        ["suite.r.companies", fmt(info.companies.length, 0)], ["suite.r.pseudonymised", t(info.pseudonymised ? "common.yes" : "common.no")],
+        ["suite.r.citation", info.citation || ""]];
+      const counts = Object.entries(rc).map(([k, v]) => ({ table: tableName(k), rows: v }));
+      const target = el("select", { class: "select" }, [el("option", { value: "", text: t("suite.new_project", { name: info.name }) })]
+        .concat(projects.filter((p) => p.exists && !p.error).map((p) => el("option", { value: p.path, text: p.name + "  ·  " + t("suite.origin." + p.origin) }))));
+      if (S.suiteProject) target.value = S.suiteProject;
+      const all = el("input", { type: "checkbox", checked: true });
+      const boxes = info.companies.map((c) => el("input", { type: "checkbox", value: c.security_code, checked: true }));
+      const list = el("div", { class: "company-list", hidden: true }, info.companies.map((c, i) => el("label", { class: "field inline" },
+        [boxes[i], el("span", { text: `${c.security_code}  ${c.short_name || ""}${c.name_en ? "  (" + c.name_en + ")" : ""}` })])));
+      all.addEventListener("change", () => { list.hidden = all.checked; });
+      const cons = el("input", { type: "checkbox" }), acc = el("input", { type: "checkbox" });
+      const minc = el("input", { type: "number", min: 0, max: 1, step: 0.05, value: 0 });
+      const out = el("div");
+      const go = el("button", { class: "btn", i18n: "suite.import", onclick: async () => {
+        const companies = all.checked ? [] : boxes.filter((b) => b.checked).map((b) => b.value);
+        if (!all.checked && !companies.length) { toast(t("suite.no_companies")); return; }
+        busy(go, true); out.replaceChildren(el("p", { class: "muted", i18n: "suite.importing" }));
+        try {
+          const detail = await api("POST", "suite/import", { release: info.folder, project: target.value || null, companies,
+            assume_consolidated: cons.checked, accept_suggestions: acc.checked, min_confidence: Number(minc.value) || 0 });
+          S.suiteProject = detail.path; store("suite.project", detail.path);
+          out.replaceChildren(el("p", { class: "ok-text", text: t("suite.imported", { name: detail.name }) }));
+          showProject(detail);
+          projectBox.scrollIntoView({ behavior: "smooth", block: "start" });
+        } catch (e) { out.replaceChildren(el("p", { class: "err-text", text: e.message })); } finally { busy(go, false); }
+      } });
+      return el("div", {}, [
+        el("div", { class: "grid grid-2" }, [
+          el("dl", { class: "side-panel" }, facts.flatMap(([k, v]) => [el("dt", { i18n: k }), el("dd", { text: String(v) })])),
+          renderTable(["table", "rows"], counts)]),
+        el("h3", { i18n: "suite.options" }),
+        el("div", { class: "controls" }, [el("label", { class: "field" }, [el("span", { i18n: "suite.target" }), target]),
+          el("label", { class: "field" }, [el("span", { i18n: "suite.min_confidence" }), minc])]),
+        el("label", { class: "field inline" }, [all, el("span", { i18n: "suite.all_companies" })]), list,
+        el("label", { class: "field inline" }, [cons, el("span", { i18n: "suite.assume_consolidated" })]),
+        el("p", { class: "muted small", i18n: "suite.assume_consolidated_help" }),
+        el("label", { class: "field inline" }, [acc, el("span", { i18n: "suite.accept_suggestions" })]),
+        el("p", { class: "muted small", i18n: "suite.accept_suggestions_help" }),
+        el("p", { class: "muted small", i18n: "suite.privacy" }), go, out]);
+    }
+
+    // ---- projects card
+    const openPath = el("input", { type: "text", class: "mono", style: "width:100%", "data-i18n-placeholder": "suite.open_ph", placeholder: t("suite.open_ph") });
+    const openBtn = el("button", { class: "btn btn-ghost", i18n: "suite.open", onclick: async () => {
+      const p = cleanPath(openPath.value);
+      if (!p) { toast(t("suite.need_path")); return; }
+      busy(openBtn, true);
+      try { const d = await api("POST", "suite/open", { path: p }); S.suiteProject = d.path; store("suite.project", d.path); showProject(d); }
+      catch (e) { fail(e); } finally { busy(openBtn, false); }
+    } });
+    const rows = status.projects.map((p) => ({ name: p.name, origin: t("suite.origin." + p.origin),
+      entities: p.counts ? p.counts.entities : "", relations: p.counts ? p.counts.ownership : "",
+      latest: p.latest_report || "", state: p.error ? t("suite.damaged") : p.exists ? "" : t("suite.missing"), _p: p }));
+    root.append(el("div", { class: "card" }, [el("h2", { i18n: "suite.projects_title" }), el("p", { class: "muted small", i18n: "suite.projects_lede" }),
+      rows.length ? renderTable(["name", "origin", "entities", "relations", "latest", "state"], rows, (r) => {
+        if (!r._p.exists || r._p.error) return;
+        api("GET", "suite/project?path=" + encodeURIComponent(r._p.path)).then((d) => { S.suiteProject = d.path; store("suite.project", d.path); showProject(d); }).catch(fail);
+      }) : el("p", { class: "muted", i18n: "suite.no_projects" }),
+      el("p", { class: "muted small", text: t("suite.workspace_folder", { folder: status.workspace_folder }) }),
+      el("div", { class: "controls" }, [el("label", { class: "field", style: "flex:1 1 360px" }, [el("span", { i18n: "suite.open_label" }), openPath]), openBtn])]));
+    root.append(el("div", { class: "spacer" }), projectBox);
+
+    // ---- one project: review and hand-over
+    function showProject(d) {
+      const c = d.counts || {};
+      const kpis = [["suite.k.entities", c.entities, "#ef4444"], ["suite.k.relations", c.ownership, "#10b981"],
+        ["suite.k.revenue", c.entity_financials, "#f59e0b"], ["suite.k.sources", c.sources, "#4338ca"]];
+      const parts = [el("h2", { text: t("suite.project_title", { name: d.name }) }), el("p", { class: "muted small mono", text: d.path }),
+        el("div", { class: "grid grid-4" }, kpis.map(([k, v, col]) => el("div", { class: "card kpi", style: "--c:" + col }, [
+          el("div", { class: "value", text: fmt(v || 0, 0) }), el("div", { class: "label", i18n: k })])))];
+      const rep = d.report;
+      if (rep) {
+        const sm = rep.summary;
+        parts.push(el("h3", { text: t("suite.latest", { name: rep.name }) }),
+          el("div", { class: "grid grid-2" }, [
+            el("div", {}, [el("h4", { i18n: "suite.imported_rows" }), renderTable(["table", "rows"], Object.entries(sm.imported || {}).map(([k, v]) => ({ table: tableName(k), rows: v })))]),
+            el("div", {}, [el("h4", { i18n: "suite.rejected_rows" }), renderTable(["table", "reason", "rows"],
+              (sm.rejected || []).map((r) => ({ table: tableName(r.table), reason: reasonText(r.reason), rows: r.rows })))])]));
+        if ((sm.notes || []).length) parts.push(el("ul", { class: "small" }, sm.notes.map((n) => el("li", { text: n }))));
+        parts.push(reviewBlock(d, rep));
+        if (rep.revenue_conflicts.length) {
+          parts.push(el("h4", { i18n: "suite.revenue_title" }), el("p", { class: "muted small", i18n: "suite.revenue_lede" }),
+            renderTable(Object.keys(rep.revenue_conflicts[0]), rep.revenue_conflicts));
+        }
+      } else parts.push(el("p", { class: "muted", i18n: "suite.no_import" }));
+      parts.push(bringBlock(d));
+      projectBox.replaceChildren(el("div", { class: "card" }, parts));
+      applyI18n(projectBox);
+    }
+
+    function reviewBlock(d, rep) {
+      const box = el("div");
+      if (!rep.review.length) { box.append(el("p", { class: "ok-text", i18n: "suite.review_done" })); return box; }
+      const listId = "suite-jur-list";
+      const datalist = el("datalist", { id: listId });
+      suiteJurisdictions().then((js) => datalist.replaceChildren(...js.map((j) => el("option", { value: j.code, text: j.name })))).catch(fail);
+      const inputs = {};
+      const table = el("div", { class: "table-wrap" }, [el("table", {}, [
+        el("thead", {}, [el("tr", {}, ["name", "status", "suggestion", "rows", "choice"].map((c) => el("th", { text: t("suite.col." + c) })))]),
+        el("tbody", {}, rep.review.map((r) => {
+          const inp = el("input", { type: "text", list: listId, class: "mono", style: "width:7em", value: r.chosen || "", "aria-label": t("suite.col.choice") + ": " + r.name });
+          inputs[r.name] = inp;
+          const use = r.suggestion && !r.suggestion.includes("/") ? el("button", { class: "btn btn-ghost btn-small", text: t("suite.use", { code: r.suggestion }), onclick: () => { inp.value = r.suggestion; } }) : null;
+          const opts = r.suggestion && r.suggestion.includes("/") ? r.suggestion.split("/").map((code) => el("button", { class: "btn btn-ghost btn-small", text: code, onclick: () => { inp.value = code; } })) : [];
+          return el("tr", {}, [el("td", { text: r.name }), el("td", { text: reviewStatus(r.status) }), el("td", {}, [use || "", ...opts]),
+            el("td", { class: "num", text: fmt(r.rows, 0) }), el("td", {}, [inp])]);
+        }))])]);
+      const save = async (again) => {
+        const choices = {};
+        for (const [name, inp] of Object.entries(inputs)) choices[name] = inp.value.trim().toUpperCase();
+        try {
+          let nd = await api("POST", "suite/overrides", { project: d.path, choices });
+          if (again) nd = await api("POST", "suite/reimport", { project: d.path });
+          toast(t(again ? "suite.reimported" : "suite.saved")); showProject(nd);
+        } catch (e) { fail(e); }
+      };
+      box.append(el("h4", { text: t("suite.review_title", { n: rep.review.length }) }), el("p", { class: "muted small", i18n: "suite.review_lede" }), datalist, table,
+        el("div", { class: "btn-row" }, [el("button", { class: "btn btn-ghost", i18n: "suite.save", onclick: () => save(false) }),
+          el("button", { class: "btn", i18n: "suite.save_reimport", onclick: () => save(true) })]));
+      return box;
+    }
+
+    function bringBlock(d) {
+      const name = el("input", { type: "text", value: d.name + " (Research Suite)" });
+      const trim = el("input", { type: "checkbox", checked: true });
+      const out = el("div");
+      const go = el("button", { class: "btn", i18n: "suite.bring", onclick: async () => {
+        busy(go, true);
+        try {
+          const res = await api("POST", "suite/bring", { project: d.path, name: name.value, trim_jurisdictions: trim.checked });
+          out.replaceChildren(el("p", { class: res.saved ? "ok-text" : "err-text", text: res.saved ? t(res.already_present ? "suite.brought_same" : "suite.brought", { id: res.dataset_id }) : t("data.import_blocked") }), issuesList(res.validation));
+          if (res.saved) { await loadDatasets(res.dataset_id); toast(t("data.import_ok", { id: res.dataset_id })); }
+        } catch (e) { fail(e); } finally { busy(go, false); }
+      } });
+      const exports = (d.lab_exports || []).map((x) => ({ name: x.name, _x: x }));
+      return el("div", {}, [el("h3", { i18n: "suite.bring_title" }), el("p", { class: "muted small", i18n: "suite.bring_lede" }),
+        el("div", { class: "controls" }, [el("label", { class: "field", style: "flex:1 1 320px" }, [el("span", { i18n: "data.import_name_label" }), name])]),
+        el("label", { class: "field inline" }, [trim, el("span", { i18n: "suite.trim" })]), el("p", { class: "muted small", i18n: "suite.trim_help" }),
+        el("div", { class: "btn-row" }, [go, el("a", { class: "btn btn-ghost", href: "#/overview", i18n: "suite.go_overview" })]), out,
+        exports.length ? el("details", {}, [el("summary", { i18n: "suite.previous_exports" }), renderTable(["name"], exports, async (r) => {
+          try {
+            const res = await api("POST", "suite/import_export", { folder: r._x.path, trim_jurisdictions: trim.checked });
+            if (res.saved) { await loadDatasets(res.dataset_id); toast(t("data.import_ok", { id: res.dataset_id })); }
+            else out.replaceChildren(issuesList(res.validation));
+          } catch (e) { fail(e); }
+        })]) : null]);
+    }
+
+    if (S.suiteRelease && relPath.value) readRelease().catch(fail);
+    const remembered = S.suiteProject || recall("suite.project");
+    if (remembered) api("GET", "suite/project?path=" + encodeURIComponent(remembered)).then((d) => { S.suiteProject = d.path; showProject(d); }).catch(() => { /* moved or deleted */ });
+  };
+
+  // Provenance of the selected dataset: where a Research Suite import or a completed dataset came from.
+  function provenanceCard(d) {
+    const m = d.metadata || {};
+    if (m.origin !== "research_suite" && m.origin !== "derived") return null;
+    const rows = [];
+    if (m.origin === "derived") {
+      rows.push(["prov.derived_from", `${m.derived_from_name || ""} (${m.derived_from})`], ["prov.mode", t("prov.mode." + m.mode)],
+        ["prov.tables_changed", Object.entries(m.tables_changed || {}).map(([k, v]) => `${tableName(k)}: ${v}`).join("; ")]);
+    }
+    const s = m.origin === "research_suite" ? m : (m.parent_metadata && m.parent_metadata.origin === "research_suite" ? m.parent_metadata : null);
+    if (s) {
+      rows.push(["prov.release", s.release || ""], ["prov.project", s.suite_project || ""], ["prov.core", `rscore ${s.rscore_version} · ${(s.commit || "").slice(0, 7)}`],
+        ["prov.review_outstanding", String(s.review_outstanding ?? "")], ["prov.revenue_conflicts", String(s.revenue_conflicts ?? "")],
+        ["prov.dropped", String(s.unused_registry_jurisdictions_dropped ?? "")]);
+      if (s.import_settings) rows.push(["prov.settings", t("prov.settings_text", { cons: t(s.import_settings.assume_consolidated ? "common.yes" : "common.no"),
+        acc: t(s.import_settings.accept_suggestions ? "common.yes" : "common.no"), conf: s.import_settings.min_confidence, overrides: s.import_settings.overrides_used })]);
+    }
+    return el("div", { class: "card" }, [el("h2", { i18n: "prov.title" }), el("p", { class: "muted small", i18n: m.origin === "derived" ? "prov.lede_derived" : "prov.lede_suite" }),
+      el("dl", { class: "side-panel" }, rows.flatMap(([k, v]) => [el("dt", { i18n: k }), el("dd", { text: v })]))]);
+  }
+
+  // Complete a dataset (GDP, tax rules): a new dataset with tables added or replaced; the original is kept.
+  function completeForm() {
+    if (!S.dataset) return null;
+    const file = el("input", { type: "file", accept: ".zip,.csv", multiple: true });
+    const mode = el("select", { class: "select" }, [el("option", { value: "merge", i18n: "complete.merge" }), el("option", { value: "replace", i18n: "complete.replace" })]);
+    const name = el("input", { type: "text", value: S.dataset.name + " (completed)" });
+    const out = el("div");
+    const real = S.dataset.jurisdictions.filter((j) => /^[A-Z]{3}$/.test(j));
+    const go = el("button", { class: "btn", i18n: "complete.go", onclick: async () => {
+      if (!file.files.length) { toast(t("coding.choose_file")); return; }
+      busy(go, true); out.replaceChildren();
+      try {
+        const tables = {};
+        for (const f of file.files) {
+          if (/\.zip$/i.test(f.name)) {
+            const buf = new Uint8Array(await f.arrayBuffer());
+            let bin = ""; for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode.apply(null, buf.subarray(i, i + 0x8000));
+            const res = await api("POST", "datasets/" + S.datasetId + "/derive", { name: name.value, mode: mode.value, zip_base64: btoa(bin) });
+            return finish(res);
+          }
+          tables[f.name.replace(/\.csv$/i, "").toLowerCase()] = await f.text();
+        }
+        finish(await api("POST", "datasets/" + S.datasetId + "/derive", { name: name.value, mode: mode.value, tables }));
+      } catch (e) { out.replaceChildren(el("p", { class: "err-text", text: e.message })); } finally { busy(go, false); }
+    } });
+    async function finish(res) {
+      out.replaceChildren(el("p", { class: res.saved ? "ok-text" : "err-text", text: res.saved ? t("complete.done", { id: res.dataset_id }) : t("data.import_blocked") }), issuesList(res.validation));
+      if (res.saved) { await loadDatasets(res.dataset_id); toast(t("complete.done", { id: res.dataset_id })); }
+    }
+    return el("div", { class: "card" }, [el("h2", { i18n: "complete.title" }), el("p", { class: "muted small", i18n: "complete.lede" }),
+      real.length ? el("a", { class: "btn btn-ghost", href: `/api/datasets/${S.datasetId}/completion_template.zip`, download: "", text: t("complete.template", { n: real.length }) })
+        : el("p", { class: "muted small", i18n: "complete.no_real" }),
+      el("div", { class: "controls", style: "margin-top:12px" }, [el("label", { class: "field" }, [el("span", { i18n: "complete.files" }), file]),
+        el("label", { class: "field" }, [el("span", { i18n: "complete.mode" }), mode]),
+        el("label", { class: "field", style: "flex:1 1 260px" }, [el("span", { i18n: "data.import_name_label" }), name])]),
+      el("p", { class: "muted small", i18n: "complete.mode_help" }), go, out]);
+  }
+
   // ------------------------------------------------------------------ boot
+  // Start-up hand-over from the command line or ResearchSuite.exe (taxnetlab --import PATH --language TAG).
+  function startup() {
+    const m = document.querySelector('meta[name="taxnetlab-startup"]');
+    try { const v = m && m.content && m.content !== "__STARTUP__" ? JSON.parse(m.content) : {}; return v && typeof v === "object" ? v : {}; }
+    catch (e) { return {}; }
+  }
   async function boot() {
+    const start = startup();
     const loc = await api("GET", "locales");
     S.locales = loc.locales;
-    const want = recall("locale");
+    const tagsAll = S.locales.map((l) => l.tag);
+    const forced = start.locale && tagsAll.includes(start.locale) && (start.force_locale || !recall("locale")) ? start.locale : null;
+    const want = forced || recall("locale");
     const browser = (navigator.languages || [navigator.language || ""]);
     const tags = S.locales.map((l) => l.tag);
     const pick = (want && tags.includes(want)) ? want : (browser.find((b) => tags.includes(b)) || loc.default);
@@ -1642,7 +1915,10 @@
     msel.value = S.mode;
     msel.addEventListener("change", async () => { S.mode = msel.value; store("mode", S.mode); applyI18n(); await route(); });
     S.engines = await api("GET", "engines");
-    await loadDatasets();
+    if (start.release) S.suiteRelease = start.release;
+    if (start.project) { S.suiteProject = start.project; store("suite.project", start.project); }
+    await loadDatasets(start.dataset_id || undefined);
+    if (start.page && PAGES[start.page]) history.replaceState(null, "", "#/" + start.page);
     document.getElementById("dataset-select").addEventListener("change", async (ev) => {
       S.datasetId = ev.target.value; try { await loadDataset(); await route(); } catch (e) { fail(e); } });
     document.getElementById("quit-btn").addEventListener("click", async () => {

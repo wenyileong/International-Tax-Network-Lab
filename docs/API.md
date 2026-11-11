@@ -32,6 +32,10 @@ The interface server listens on 127.0.0.1 only. POST requests need the header `X
 | GET | `/api/expectations` | frozen expectation entries |
 | GET | `/api/expectations/{entry_id}` | one frozen entry |
 | GET | `/api/replications` | stored replication reports |
+| GET | `/api/datasets/{dataset_id}/completion_template.zip` | GDP and tax-rule template for the dataset's jurisdictions |
+| GET | `/api/suite` | Research Suite: vendored core, suite settings and the projects found |
+| GET | `/api/suite/jurisdictions` | jurisdiction codes and names for review pickers |
+| GET | `/api/suite/project?path=FILE.sqlite` | one suite project: counts, latest import report and review |
 | POST | `/api/datasets/synthetic` | generate a synthetic dataset {seed, n_jurisdictions, ...} |
 | POST | `/api/datasets/import` | import CSV tables {name, tables: {table: csv}, mapping?} |
 | POST | `/api/datasets/import_zip` | import a ZIP of table CSV files {name, zip_base64, mapping?} |
@@ -43,6 +47,15 @@ The interface server listens on 127.0.0.1 only. POST requests need the header `X
 | POST | `/api/expectations` | freeze an expectation entry {entry, frozen_by} |
 | POST | `/api/replications` | check a run against a frozen entry {entry_id, run_id} |
 | POST | `/api/reproduce` | reproduce a run from an export package {zip_base64} |
+| POST | `/api/datasets/{dataset_id}/derive` | complete a dataset: add or replace tables {name, tables, mode} |
+| POST | `/api/suite/inspect` | read an A-share release folder's manifest {release} |
+| POST | `/api/suite/projects` | create a suite project in the workspace {name} |
+| POST | `/api/suite/open` | open a suite project file {path} |
+| POST | `/api/suite/import` | import an A-share release {release, project?, project_name?, companies?, assume_consolidated?, accept_suggestions?, min_confidence?} |
+| POST | `/api/suite/overrides` | save jurisdiction choices for names and places {project, choices} |
+| POST | `/api/suite/reimport` | repeat the latest import with the saved choices {project} |
+| POST | `/api/suite/bring` | export a suite project and import it as a Lab dataset {project, name?} |
+| POST | `/api/suite/import_export` | import a suite Lab-export folder as a dataset {folder, name?} |
 | POST | `/api/quit` | stop the server |
 
 ## Python service layer (`taxnetlab.api.Api`)
@@ -55,9 +68,21 @@ The interface, the command line and notebooks use the same class: `Api(Workspace
 
 Compare a stored run with a frozen entry; the report is stored once and never rewritten.
 
+### `completion_template(dataset_id: 'str') -> 'bytes'`
+
+A real-sample coding template (GDP and tax rules) listing the dataset's real jurisdictions.
+
 ### `dataset(dataset_id: 'str') -> 'dict[str, Any]'`
 
 ### `datasets() -> 'list[dict[str, Any]]'`
+
+### `derive_dataset(base_id: 'str', name: 'str', texts: 'dict[str, str]', mode: 'str' = 'merge') -> 'dict[str, Any]'`
+
+Complete a dataset: a new dataset with some tables added or replaced (the original is unchanged).
+
+``merge``: rows supplied replace stored rows with the same primary key and the rest are added;
+``replace``: each supplied table replaces the stored table entirely. Tables supplied with no rows are
+ignored in ``merge`` mode. The new dataset records what it was derived from.
 
 ### `engines() -> 'list[dict[str, Any]]'`
 
@@ -75,9 +100,11 @@ On first launch, give the user something to look at: one synthetic world.
 
 ### `generate_synthetic(params: 'dict[str, Any]') -> 'dict[str, Any]'`
 
-### `guide() -> 'dict[str, str]'`
+### `guide(locale: 'str | None' = None) -> 'dict[str, str]'`
 
-### `import_csv(name: 'str', texts: 'dict[str, str]', mapping: 'dict[str, dict[str, str]] | None' = None) -> 'dict[str, Any]'`
+The user guide and method notes; a translated file (``user_guide.<tag>.md``) is used where it exists.
+
+### `import_csv(name: 'str', texts: 'dict[str, str]', mapping: 'dict[str, dict[str, str]] | None' = None, metadata: 'dict[str, Any] | None' = None) -> 'dict[str, Any]'`
 
 ### `import_zip(name: 'str', data: 'bytes', mapping: 'dict[str, dict[str, str]] | None' = None) -> 'dict[str, Any]'`
 
@@ -105,6 +132,8 @@ the engine status and become citable only when pinned as a run (same parameters 
 ### `run_report(run_id: 'str') -> 'str'`
 
 ### `runs() -> 'list[dict[str, Any]]'`
+
+### `suite_status() -> 'dict[str, Any]'`
 
 ### `table(dataset_id: 'str', table: 'str', limit: 'int' = 1000) -> 'dict[str, Any]'`
 

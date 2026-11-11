@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "international-tax-network-lab"
-version = "1.0.0rc1"
+version = "1.0.0rc2"
 description = "Local-first academic workbench for international taxation network research"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -27,7 +27,8 @@ taxnetlab = "taxnetlab.cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-taxnetlab = ["web/*.html", "web/*.css", "web/*.js", "web/locales/*.json", "web/vendor/*.js", "data/*.json", "guide/*.md", "_build_manifest.json"]
+taxnetlab = ["web/*.html", "web/*.css", "web/*.js", "web/*.svg", "web/locales/*.json", "web/vendor/*.js", "data/*.json", "guide/*.md", "_build_manifest.json"]
+rscore = ["data/*.json", "VENDORED.json"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]

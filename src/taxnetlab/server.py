@@ -12,6 +12,7 @@ Protections for a local server that a browser can reach:
 
 from __future__ import annotations
 
+import html
 import json
 import logging
 import mimetypes
@@ -63,6 +64,10 @@ ROUTES: tuple[tuple[str, str, str], ...] = (
     ("GET", "/api/expectations", "frozen expectation entries"),
     ("GET", "/api/expectations/{entry_id}", "one frozen entry"),
     ("GET", "/api/replications", "stored replication reports"),
+    ("GET", "/api/datasets/{dataset_id}/completion_template.zip", "GDP and tax-rule template for the dataset's jurisdictions"),
+    ("GET", "/api/suite", "Research Suite: vendored core, suite settings and the projects found"),
+    ("GET", "/api/suite/jurisdictions", "jurisdiction codes and names for review pickers"),
+    ("GET", "/api/suite/project?path=FILE.sqlite", "one suite project: counts, latest import report and review"),
     ("POST", "/api/datasets/synthetic", "generate a synthetic dataset {seed, n_jurisdictions, ...}"),
     ("POST", "/api/datasets/import", "import CSV tables {name, tables: {table: csv}, mapping?}"),
     ("POST", "/api/datasets/import_zip", "import a ZIP of table CSV files {name, zip_base64, mapping?}"),
@@ -74,6 +79,16 @@ ROUTES: tuple[tuple[str, str, str], ...] = (
     ("POST", "/api/expectations", "freeze an expectation entry {entry, frozen_by}"),
     ("POST", "/api/replications", "check a run against a frozen entry {entry_id, run_id}"),
     ("POST", "/api/reproduce", "reproduce a run from an export package {zip_base64}"),
+    ("POST", "/api/datasets/{dataset_id}/derive", "complete a dataset: add or replace tables {name, tables, mode}"),
+    ("POST", "/api/suite/inspect", "read an A-share release folder's manifest {release}"),
+    ("POST", "/api/suite/projects", "create a suite project in the workspace {name}"),
+    ("POST", "/api/suite/open", "open a suite project file {path}"),
+    ("POST", "/api/suite/import", "import an A-share release {release, project?, project_name?, companies?, "
+                                  "assume_consolidated?, accept_suggestions?, min_confidence?}"),
+    ("POST", "/api/suite/overrides", "save jurisdiction choices for names and places {project, choices}"),
+    ("POST", "/api/suite/reimport", "repeat the latest import with the saved choices {project}"),
+    ("POST", "/api/suite/bring", "export a suite project and import it as a Lab dataset {project, name?}"),
+    ("POST", "/api/suite/import_export", "import a suite Lab-export folder as a dataset {folder, name?}"),
     ("POST", "/api/quit", "stop the server"),
 )
 TOKEN_HEADER = "X-TaxNetLab-Token"
@@ -96,8 +111,9 @@ class AppServer(ThreadingHTTPServer):
     daemon_threads = True
     allow_reuse_address = False
 
-    def __init__(self, api: Api, port: int):
+    def __init__(self, api: Api, port: int, startup: dict[str, Any] | None = None):
         self.api = api
+        self.startup = dict(startup or {})  # hand-over to the interface: page, dataset, release, project, locale
         self.token = secrets.token_urlsafe(24)
         self.web_root = resource_path("web").resolve()
         super().__init__(("127.0.0.1", port), Handler)
@@ -267,7 +283,16 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, api.template(kind, cands), "application/zip",
                                   {"Content-Disposition": f'attachment; filename="taxnetlab_{kind}_template.zip"'})
             if p == ["guide"]:
-                return self._json(200, api.guide())
+                return self._json(200, api.guide(_q(qs, "locale")))
+            if len(p) == 3 and p[0] == "datasets" and p[2] == "completion_template.zip":
+                return self._send(200, api.completion_template(p[1]), "application/zip",
+                                  {"Content-Disposition": f'attachment; filename="taxnetlab_complete_{p[1]}.zip"'})
+            if p == ["suite"]:
+                return self._json(200, _suite_call(api.suite_status))
+            if p == ["suite", "jurisdictions"]:
+                return self._json(200, _suite_call(api.suite.jurisdictions))
+            if p == ["suite", "project"]:
+                return self._json(200, _suite_call(api.suite.detail, _q(qs, "path") or ""))
             if p == ["expectations"]:
                 return self._json(200, api.expectations())
             if len(p) == 2 and p[0] == "expectations":
@@ -348,11 +373,62 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(200, api.preview(p[1], str(body.get("dataset_id") or ""), body.get("parameters")))
             if len(p) == 3 and p[0] == "runs" and p[2] == "replay":
                 return self._json(200, api.replay(p[1]))
+            if len(p) == 3 and p[0] == "datasets" and p[2] == "derive" and "zip_base64" in body:
+                import base64
+                import binascii
+
+                from taxnetlab.coding import read_template_zip
+
+                try:
+                    texts = read_template_zip(base64.b64decode(str(body.get("zip_base64") or ""), validate=True))
+                except (binascii.Error, zipfile.BadZipFile):
+                    raise ValueError("'zip_base64' must be a base64-encoded ZIP archive") from None
+                return self._json(200, api.derive_dataset(p[1], str(body.get("name") or ""), texts,
+                                                          str(body.get("mode") or "merge")))
+            if len(p) == 3 and p[0] == "datasets" and p[2] == "derive":
+                tables = body.get("tables")
+                if not isinstance(tables, dict) or not all(isinstance(v, str) for v in tables.values()):
+                    raise ValueError("'tables' must map table names to CSV text")
+                return self._json(200, api.derive_dataset(p[1], str(body.get("name") or ""), tables,
+                                                          str(body.get("mode") or "merge")))
+            if len(p) == 2 and p[0] == "suite":
+                return self._json(200, self._suite_post(p[1], body))
             if p == ["quit"]:
                 self._json(200, {"stopping": True})
                 self.server.stop_soon()
                 return None
         raise KeyError(f"no API route for {method} /api/{'/'.join(parts)}")
+
+    def _suite_post(self, action: str, body: dict[str, Any]) -> Any:
+        api = self.server.api
+        b = api.suite
+        text = lambda k: str(body.get(k) or "")  # noqa: E731
+        if action == "inspect":
+            return _suite_call(b.inspect_release, text("release"))
+        if action == "projects":
+            return _suite_call(lambda: b.detail(b.create_project(text("name")).path))
+        if action == "open":
+            return _suite_call(b.open_project, text("path"))
+        if action == "import":
+            companies = body.get("companies") or []
+            if isinstance(companies, str):
+                companies = [c for c in companies.replace(";", ",").split(",")]
+            return _suite_call(b.import_release, text("project") or None, text("release"),
+                               project_name=text("project_name") or None, companies=list(companies),
+                               assume_consolidated=bool(body.get("assume_consolidated")),
+                               accept_suggestions=bool(body.get("accept_suggestions")),
+                               min_confidence=body.get("min_confidence") or 0.0)
+        if action == "overrides":
+            return _suite_call(b.save_overrides, text("project"), body.get("choices") or {})
+        if action == "reimport":
+            return _suite_call(b.reimport, text("project"))
+        if action == "bring":
+            return _suite_call(b.bring_into_lab, api, text("project"), text("name") or None,
+                               body.get("trim_jurisdictions", True) is not False)
+        if action == "import_export":
+            return _suite_call(b.import_export_folder, api, text("folder"), text("name") or None,
+                               trim_jurisdictions=body.get("trim_jurisdictions", True) is not False)
+        raise KeyError(f"no API route for POST /api/suite/{action}")
 
     def _static(self, path: str) -> None:
         if path in ("", "/"):
@@ -373,15 +449,28 @@ class Handler(BaseHTTPRequestHandler):
             ctype += "; charset=utf-8"
         if target.name == "index.html":
             data = data.replace(b"__SESSION_TOKEN__", self.server.token.encode("ascii"))
+            startup = html.escape(json.dumps(self.server.startup, ensure_ascii=False), quote=True)
+            data = data.replace(b"__STARTUP__", startup.encode("utf-8"))
         self._send(200, data, ctype, {
             "Content-Security-Policy": "default-src 'self'; script-src 'self' 'unsafe-eval'; "
                                        "style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; "
                                        "connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"})
 
 
+def _suite_call(fn, *args, **kwargs):
+    """File-system problems in suite operations are the user's to fix (a moved folder, a locked file): report
+    them as bad requests with the message, not as internal errors."""
+    try:
+        return fn(*args, **kwargs)
+    except (FileNotFoundError, NotADirectoryError, PermissionError, IsADirectoryError) as exc:
+        raise ValueError(str(exc)) from None
+    except __import__("sqlite3").DatabaseError as exc:
+        raise ValueError(f"not a Research Suite project, or the file is damaged: {exc}") from None
+
+
 def serve(api: Api, port: int | None = None, open_browser: bool = True, ready: threading.Event | None = None,
-          holder: list | None = None) -> None:
-    server = AppServer(api, port or find_port())
+          holder: list | None = None, startup: dict[str, Any] | None = None) -> None:
+    server = AppServer(api, port or find_port(), startup)
     if holder is not None:
         holder.append(server)
     print(f"International Tax Network Lab is running at {server.url}")

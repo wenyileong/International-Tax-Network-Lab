@@ -10,3 +10,6 @@ Third-party components keep their own licences:
   - NetworkX (runtime dependency): BSD 3-Clause licence.
   - ISO 3166-1 codes and short names (src/taxnetlab/data/iso3166.json): taken from the Debian
     iso-codes data (LGPL-2.1) via pycountry; distributed unmodified as data.
+  - Research Suite core (src/rscore): the author's own Research-Suite-Core, vendored unmodified at the
+    commit recorded in src/rscore/VENDORED.json; same terms as this file. Its place-name aliases
+    (src/rscore/data/place_aliases.json) are the author's own data.

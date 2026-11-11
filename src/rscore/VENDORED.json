@@ -1,0 +1,23 @@
+{
+  "source": "https://github.com/wenyileong/research-suite-core",
+  "commit": "18985395ca4ac6e28bb6582690d0c8e85014c159",
+  "note": "Copied by scripts/sync_rscore.py; do not edit here.",
+  "files": {
+    "__init__.py": "9967f6bae3ceaeeb1c2a01e23c6ab2bfac73eb45bfae5a9dc5df19ef46172110",
+    "canonical.py": "0b0d4d4fbfcba499d3b837bf3c7d8dd58f7c588bef26f2b9dc93d471548db33d",
+    "conventions.py": "654949a5f475de97e4ae32fcfe2a451601d2c6a8b14f2e3550620f670ec6e501",
+    "schema.py": "43e0ae44bab791f38fba749386d10ee64561c4f02522d32dea8d8b95b62584e2",
+    "store.py": "7dfecf652fb3528abd4c114fe8057d31856aafb3839e93f032ce2beead65506a",
+    "validation.py": "d2f59428845e35d904d5793fd9e31068678ca90ab1b4dfe3cd2bff3a2d84d9e2",
+    "jurisdictions.py": "a040a11efe112b13c3a7d5bdc6db88dc4faf0259ba4919160d342b9ddc9d1ed2",
+    "places.py": "24a66d4331cdf98efc4486877e2fde21a12a9070a2fb551dd3736123d0618f92",
+    "export.py": "a1174f29e48231a18ce1b1a4d863d16881cb5ddfd6250f46be958ffed178e621",
+    "snapshot.py": "ce7b93389670480f5226ea9836256a8d3ef2553fa81d151ad34d10e7050d1fb9",
+    "services.py": "59506f9c716b95685bf0cfce486e78b62943334e0b7c30236e016699d09b841e",
+    "demo.py": "fc3cab7c4e86ea2ff5a3b5e8945a87ad0e7e051db125e30718ba62255c5725d4",
+    "importers/__init__.py": "21f899e2a82275fe8296abf056e0267d1efd4796d73dd14950910bf9ab3e7ab9",
+    "importers/ashare.py": "cba59c39d655b9ce983c944c29d61aa62488766a396542b720a5ab55999000a9",
+    "data/iso3166.json": "ebbf1594074f54ce32184cf8c2f572b0f9d57b7fa732128fb06bea4f72c3cb27",
+    "data/place_aliases.json": "2da2e6d2e757169bf503b18ed4e0667168d8256356bf845db8bdde70f1dc4055"
+  }
+}

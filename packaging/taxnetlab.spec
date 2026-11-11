@@ -12,11 +12,16 @@ datas = [
     (str(PKG / "web" / "index.html"), "taxnetlab/web"),
     (str(PKG / "web" / "app.css"), "taxnetlab/web"),
     (str(PKG / "web" / "app.js"), "taxnetlab/web"),
+    (str(PKG / "web" / "icon.svg"), "taxnetlab/web"),
     (str(PKG / "web" / "vendor" / "plotly.min.js"), "taxnetlab/web/vendor"),
 ]
 datas += [(str(p), "taxnetlab/web/locales") for p in sorted((PKG / "web" / "locales").glob("*.json"))]
 datas += [(str(p), "taxnetlab/data") for p in sorted((PKG / "data").glob("*.json"))]
 datas += [(str(p), "taxnetlab/guide") for p in sorted((PKG / "guide").glob("*.md"))]
+# The Research Suite core (vendored, see scripts/sync_rscore.py): its registry data and provenance record.
+RS = ROOT / "src" / "rscore"
+datas += [(str(p), "rscore/data") for p in sorted((RS / "data").glob("*.json"))]
+datas.append((str(RS / "VENDORED.json"), "rscore"))
 if (PKG / "_build_manifest.json").exists():
     datas.append((str(PKG / "_build_manifest.json"), "taxnetlab"))
 
@@ -24,7 +29,7 @@ a = Analysis(
     [str(ROOT / "packaging" / "launcher.py")],
     pathex=[str(ROOT / "src")],
     datas=datas,
-    hiddenimports=[],
+    hiddenimports=["rscore", "rscore.services", "rscore.importers.ashare"],
     excludes=["tkinter", "numpy", "scipy", "pandas", "matplotlib", "IPython", "pytest", "hypothesis", "PIL"],
     noarchive=False,
 )
@@ -41,5 +46,5 @@ exe = EXE(
     debug=False,
     strip=False,
     runtime_tmpdir=None,
-    icon=None,
+    icon=str(ROOT / "packaging" / "taxnetlab.ico"),
 )

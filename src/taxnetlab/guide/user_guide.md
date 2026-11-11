@@ -14,7 +14,7 @@ On first launch a small synthetic world is created so that every page has someth
 
 ## 2. Reading modes and languages
 
-The top bar switches between **Plain English** (default) and **Technical** wording. Every chart has guidance on how to read it, open in Plain English and folded away in Technical mode. Interface text comes from locale files; English (UK) is complete, and other languages can be added without changing the code (`docs/TRANSLATING.md`).
+The top bar switches between **Plain English** (default) and **Technical** wording. Every chart has guidance on how to read it, open in Plain English and folded away in Technical mode. Interface text comes from locale files; English (UK) and Simplified Chinese (简体中文) are complete, and other languages can be added without changing the code (`docs/TRANSLATING.md`). The guide and method notes are also available in Simplified Chinese.
 
 ## 3. Data
 
@@ -32,7 +32,22 @@ Datasets are **content-addressed**: the identifier is a hash of the tables, so t
 
 Unverified legal rows can be used, but every result that relies on them is flagged.
 
-## 4. The analysis pages
+**Completing a dataset.** A method may need data the dataset lacks, such as GDP for conduits and sinks or tax rules for tax routes. Under **Complete this dataset** on the Data page, download a template that already lists the dataset's jurisdictions, fill in the rows you need (each with a source), delete the rest and upload it. The result is a new dataset that records what it was completed from; the original is unchanged. *Add rows* keeps the stored rows and replaces only rows with the same key; *Replace whole tables* replaces each table you supply.
+
+## 4. Firm-level data from A-share Company Intelligence
+
+The **Research Suite** page brings the ownership data of Chinese listed groups, as released by A-share Company Intelligence, into the Lab. The conversion is the Research Suite's own: the Lab carries a pinned copy of the suite's core, so a release is converted here exactly as ResearchSuite.exe converts it.
+
+1. **Read a release.** Paste the path of a release folder (it holds `manifest.json` and a `csv` folder). The Lab shows what it holds; nothing is changed.
+2. **Import.** Choose a project (a new one is made in the workspace folder `suite_projects`, or pick an existing one, including projects made in ResearchSuite.exe) and the options. Natural persons are never imported. Rows that look like parsing errors (shifted columns, stakes outside 0 to 100 per cent, stakes summing to more than 100 per cent, revenue without a stated scope) are set aside with a reason, which the page lists.
+3. **Review.** Names and places whose jurisdiction is not clear (for example 维尔京群岛, or a shareholder whose jurisdiction is not stated) are listed. Choose a code for each, or leave it empty to keep it out, then **Save and import again**. Choices are kept with the project and used by every later import, in the Lab and in ResearchSuite.exe alike.
+4. **Bring into the Lab.** The project's entities, ownership, revenue and sources become a Lab dataset. The dataset records the release, the project, the import settings, the review left outstanding and the converter's version; the Overview page shows this. Jurisdictions that no row refers to are left out by default, so that methods treating each jurisdiction as an observation are not dominated by the registry.
+
+A release carries ownership and revenue but no GDP or tax rules, so on its own it supports the network pages, the matrix and topology with the link features (`outward_links`, `inward_links`). Complete the dataset with GDP for conduits and sinks, and with tax rules for tax routes. Revenue in a release is consolidated, which double counts subsidiaries; the import warning says so, and conduits and sinks should not be read until the revenue has been deconsolidated.
+
+From the command line: `taxnetlab import-ashare RELEASE_FOLDER --bring`, and `taxnetlab suite list | review | choose | reimport | bring`. ResearchSuite.exe, or a shortcut, can open the Lab directly on a release, a project or an export with `taxnetlab --import PATH`, and in a chosen language with `--language zh-Hans`.
+
+## 5. The analysis pages
 
 * **Network**, **Matrix**: the ownership network in ownership or value-flow direction, and a jurisdiction-by-jurisdiction matrix.
 * **Tax routes** (van 't Riet and Lejour): the cheapest route for dividends from a host to a home jurisdiction, the treaty-shopping gain, and conduit rankings. Move a tax rate or a treaty and everything recomputes. **Treaty conditions** can be applied: holding thresholds are checked against facts you set, and the beneficial ownership, principal purpose and limitation-on-benefits tests stay undecided unless you record an assumption. *Strict* withholds undecided benefits; *contingent* keeps them and flags the routes that rely on them.
@@ -42,7 +57,7 @@ Unverified legal rows can be used, but every result that relies on them is flagg
 
 Live results on these pages are **exploratory previews**: they are not stored and carry an "exploratory" mark. **Save as run** records the exact state as a run.
 
-## 5. Runs
+## 6. Runs
 
 A **run** is one engine on one dataset with one set of parameters. Its record is immutable and holds the parameters and assumptions, the data identifiers, warnings, the calculation trace, the hash of every output and the software environment. On the **Runs** page:
 
@@ -54,22 +69,24 @@ A **run** is one engine on one dataset with one set of parameters. Its record is
 
 **Sensitivity sweeps** (`sensitivity.sweep`) run a method over a grid of parameter values and report how stable each jurisdiction's rank and classification are.
 
-## 6. Status of methods
+## 7. Status of methods
 
 Every engine carries a status, shown on every result: *interface* (registered, cannot run), *specified*, *implemented* (passes every test against its specification), *verified* (the specification has been checked against the source by the author, with a completed record in `docs/verification/records`), *replicated* or *replicated with discrepancies* (published results matched on real data under a frozen expectation). Results from engines below *verified* carry an "unverified method" mark.
 
 The engine for the patented topological method (US 10,417,262 B2) stays at interface status pending the IP decision; persistent homology is a separate, published method.
 
-## 7. Replicating a published result
+## 8. Replicating a published result
 
 1. Write an expectation entry (drafts are in `docs/expectations`): the published results, the statistic, the tolerance and the decision rule.
 2. **Freeze** it (Runs page or `taxnetlab expect freeze FILE --by NAME`). A frozen entry cannot be changed; a correction is a new entry that supersedes it.
 3. Import the real data, run the engine with the parameters the entry requires, and **check** the run against the entry. A run made before the entry was frozen is refused.
 
-## 8. Command line
+## 9. Command line
 
 ```text
-taxnetlab [serve] [--workspace DIR] [--port N] [--no-browser]
+taxnetlab [serve] [--workspace DIR] [--port N] [--no-browser] [--import PATH] [--language TAG]
+taxnetlab import-ashare RELEASE_FOLDER [--project FILE.sqlite] [--companies CODES] [--bring]
+taxnetlab suite list | review PROJECT | choose PROJECT NAME=CODE ... | reimport PROJECT | bring PROJECT
 taxnetlab generate --seed 42
 taxnetlab datasets
 taxnetlab import FILE.zip|FOLDER [--name TEXT] [--mapping MAP.json]
@@ -83,13 +100,14 @@ taxnetlab selftest
 taxnetlab version
 ```
 
-## 9. Troubleshooting
+## 10. Troubleshooting
 
 * *The browser did not open*: open the address shown in the console window.
 * *Windows SmartScreen warns*: the executable is not code-signed; compare its SHA-256 with `SHA256SUMS.txt` from the release, then choose More info, Run anyway.
 * *A run is slow*: large tax-routing worlds enumerate many near-optimal routes; the bounds (`max_intermediates`, `max_routes_per_pair`, `route_budget`) are reported when they bind. Run it from the Runs page, where it runs in the background.
+* *A release cannot be read*: choose the release folder itself, the one holding `manifest.json`, not its `csv` folder.
 * *Something went wrong*: details are written to the log file in the workspace (`logs/taxnetlab.log`).
 
-## 10. Privacy
+## 11. Privacy
 
 Everything stays on your computer. There is no telemetry and no network access at run time. Licensed data are never written to export packages beyond what you confirm the licence permits.

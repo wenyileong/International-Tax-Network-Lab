@@ -113,11 +113,11 @@ class PersistentHomologyEngine(Engine):
         if params.get("period") is None:
             fallback = sorted({a["period"] for a in dataset.tables["jurisdiction_attributes"]})
             params["period"] = (periods or fallback or [None])[-1]
-        if params["period"] is None:
-            r.error("no_period", "the dataset has neither tax rules nor jurisdiction attributes", params={})
-            return r
+        period_free = {"outward_links", "inward_links"}  # current holdings: no period needed
         if params["input"] == "routing_cost":
-            if params["period"] not in periods:
+            if params["period"] is None:
+                r.error("no_period", "the dataset has neither tax rules nor jurisdiction attributes", params={})
+            elif params["period"] not in periods:
                 r.error("unknown_period", f"no tax rules for period '{params['period']}'",
                         params={"period": params["period"], "periods": ", ".join(periods)})
             return r
@@ -127,6 +127,10 @@ class PersistentHomologyEngine(Engine):
                     params={"ids": ", ".join(unknown)})
         if not ids:
             r.error("no_features", "select at least one feature", params={})
+        if params["period"] is None and set(ids) - period_free:
+            r.error("no_period", "the dataset has neither tax rules nor jurisdiction attributes; without them only "
+                    "the features outward_links and inward_links can be used", params={})
+            return r
         needs_tax = {"cit", "dividend_wht", "mean_applicable_wht", "treaty_count", "vtrl_btwns", "vtrl_mean_shop"}
         if needs_tax & set(ids) and params["period"] not in periods:
             r.error("unknown_period", f"no tax rules for period '{params['period']}'",

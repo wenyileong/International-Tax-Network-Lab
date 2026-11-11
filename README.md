@@ -2,7 +2,7 @@
 
 A local-first research workbench for analysing international tax and corporate ownership networks. It is built to implement published methods faithfully and keep them separate, to record exactly how every result was produced, and to let a researcher inspect, compare and export results to a standard fit for peer-reviewed work.
 
-**Release 1.0.0rc1 (release candidate).** Three published-method engines with live pages (optimal tax routing of van 't Riet and Lejour, with treaty conditions; conduits and sinks of Garcia-Bernardo and others; persistent homology), a model comparison under the agreement rule, sensitivity sweeps with robustness shares, legal coding templates, an expectation register for replication, immutable run records with replay, run reports, export packages by reproducibility tier, and a Windows executable and per-user installer. The release becomes 1.0 when the conditions that only the author can satisfy are met (verification records, a replication on real data, a physical Windows test, the licence and a DOI; see `RELEASING.md` and `docs/BUILD_1_0_RC1_STATUS.md`). Until then the method engines are at *implemented* status and their results are marked unverified. The patent-method engine (US Patent 10,417,262 B2) stays at *interface* status pending the IP decision.
+**Release 1.0.0rc2 (release candidate).** Three published-method engines with live pages (optimal tax routing of van 't Riet and Lejour, with treaty conditions; conduits and sinks of Garcia-Bernardo and others; persistent homology), a model comparison under the agreement rule, sensitivity sweeps with robustness shares, legal coding templates, an expectation register for replication, immutable run records with replay, run reports, export packages by reproducibility tier, and a Windows executable and per-user installer. Release candidate 2 adds firm-level data from A-share Company Intelligence through the Research Suite's own converter, dataset completion (GDP and tax rules) and a complete Simplified Chinese interface and guide. The release becomes 1.0 when the conditions that only the author can satisfy are met (verification records, a replication on real data, a physical Windows test, the licence and a DOI; see `RELEASING.md` and `docs/BUILD_1_0_RC2_STATUS.md`). Until then the method engines are at *implemented* status and their results are marked unverified. The patent-method engine (US Patent 10,417,262 B2) stays at *interface* status pending the IP decision.
 
 > The data shipped with the software are synthetic. Every jurisdiction, company, value and rate is fictional. The software gives no tax or legal advice, and network position, centrality or clustering is not evidence of avoidance, misconduct or illegality.
 
@@ -53,7 +53,8 @@ A run specification is a small JSON file:
 | Compare | The methods' measures side by side for every jurisdiction: ranks shown only where every reading of the source agrees (otherwise the range), how many readings support each sink or conduit classification, rank correlations between measures, and definitions side by side. No combined score. |
 | Runs | Execute any engine in the background (progress, cancel), inspect and replay runs, download the record, an HTML report or an export package, check a run against a frozen expectation, freeze expectations, and reproduce a run from a package. |
 | Guide | The user guide, method notes and a glossary of statuses and measures. |
-| Data | Table viewer and CSV download, validation report, synthetic generator, CSV import, and legal coding templates (download, code, import). |
+| Data | Table viewer and CSV download, validation report, synthetic generator, CSV import, legal coding templates (download, code, import), and completion of a dataset with GDP or tax rules (a template for its own jurisdictions; the result is a new dataset). |
+| Research Suite | A-share Company Intelligence releases converted with the Research Suite's converter: read a release, import it into a suite project, choose jurisdictions for the names and places that need one, import again, and bring the project into the Lab as a dataset that records its provenance. Projects are shared with ResearchSuite.exe. |
 | Methods | Every registered engine with its status, boundary and next step. |
 | About | Version, build, source commit, lock-file hash, workspace. |
 
@@ -101,14 +102,15 @@ dist\taxnetlab.exe selftest
 
 ## Languages
 
-All interface text is loaded from `src/taxnetlab/web/locales/<tag>.json`. English (UK) is complete. To add a language, see `docs/TRANSLATING.md`; the language menu picks up new files automatically, and right-to-left scripts are supported through the locale's `dir` setting.
+All interface text is loaded from `src/taxnetlab/web/locales/<tag>.json`. English (UK) and Simplified Chinese (简体中文) are complete, and the user guide and method notes are translated. To add a language, see `docs/TRANSLATING.md`; the language menu picks up new files automatically, and right-to-left scripts are supported through the locale's `dir` setting.
 
 ## Project documents
 
 * `docs/USER_GUIDE.md` and `docs/API.md` (HTTP routes and the Python service layer).
+* `docs/SUITE_INTEGRATION.md`: how the Lab uses the Research Suite's core, and proposed changes on the suite side.
 * `RELEASING.md`: release checklist and the conditions for 1.0.
 * `docs/PROJECT_PLAN_v2_6.md`: plan, status ladders, phases and release gates; s 9.4 compares alternative topological methods.
-* `docs/BUILD_1_0_RC1_STATUS.md`, `docs/BUILD_0_8_STATUS.md`, `docs/BUILD_0_7_STATUS.md`, `docs/BUILD_0_6_STATUS.md`, `docs/BUILD_0_5_STATUS.md`, `docs/BUILD_0_4_STATUS.md`, `docs/BUILD_0_3_STATUS.md` and `docs/BUILD_0_2_STATUS.md`: what each release contains, the pre-build logical evaluations and test results.
+* `docs/BUILD_1_0_RC2_STATUS.md`, `docs/BUILD_1_0_RC1_STATUS.md`, `docs/BUILD_0_8_STATUS.md`, `docs/BUILD_0_7_STATUS.md`, `docs/BUILD_0_6_STATUS.md`, `docs/BUILD_0_5_STATUS.md`, `docs/BUILD_0_4_STATUS.md`, `docs/BUILD_0_3_STATUS.md` and `docs/BUILD_0_2_STATUS.md`: what each release contains, the pre-build logical evaluations and test results.
 * `docs/IP_GATE_US10417262.md`: research note on the patent for the author's decision, including option (f), the alternative methods.
 * `docs/METHOD_RECONSTRUCTION_REGISTER.md`: verification checklists for the three published methods.
 * `docs/specs/`: specifications of implemented engines, the eligibility rule layer and the model comparison.

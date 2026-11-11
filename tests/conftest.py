@@ -49,3 +49,11 @@ def server_url_token(workspace):
     yield srv.url, srv.token
     srv.shutdown()
     srv.server_close()
+
+
+@pytest.fixture(autouse=True)
+def _no_real_suite_settings(tmp_path_factory, monkeypatch):
+    """Never read the developer's own ResearchSuite.exe settings in tests."""
+    cfg = tmp_path_factory.mktemp("suite_config")
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(cfg))
+    monkeypatch.setenv("APPDATA", str(cfg))

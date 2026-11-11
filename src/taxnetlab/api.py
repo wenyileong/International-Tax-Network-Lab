@@ -116,20 +116,98 @@ class Api:
         did = self.ws.save_dataset(ds)
         return {"dataset_id": did, "name": self.ws.dataset_meta(did)["name"], "validation": ds.validate().to_dict()}
 
-    def import_csv(self, name: str, texts: dict[str, str], mapping: dict[str, dict[str, str]] | None = None) -> dict[str, Any]:
-        meta = {"origin": "csv_import"} | ({"column_mapping": mapping} if mapping else {})
+    def import_csv(self, name: str, texts: dict[str, str], mapping: dict[str, dict[str, str]] | None = None,
+                   metadata: dict[str, Any] | None = None) -> dict[str, Any]:
+        meta = dict(metadata or {"origin": "csv_import"}) | ({"column_mapping": mapping} if mapping else {})
         ds, report = Dataset.from_csv_texts(name, texts, meta, mapping=mapping)
         if ds is None:
             return {"saved": False, "validation": report.to_dict()}
+        existed = ds.dataset_id in self.ws.dataset_ids()
         did = self.ws.save_dataset(ds)
         return {"saved": True, "dataset_id": did, "name": self.ws.dataset_meta(did)["name"],
-                "validation": report.to_dict()}
+                "validation": report.to_dict(), "already_present": existed}
 
     def import_zip(self, name: str, data: bytes, mapping: dict[str, dict[str, str]] | None = None) -> dict[str, Any]:
         """Import a coding template or any ZIP of table CSV files (plan s 5.4)."""
         from taxnetlab.coding import read_template_zip
 
         return self.import_csv(name, read_template_zip(data), mapping)
+
+    def derive_dataset(self, base_id: str, name: str, texts: dict[str, str], mode: str = "merge") -> dict[str, Any]:
+        """Complete a dataset: a new dataset with some tables added or replaced (the original is unchanged).
+
+        ``merge``: rows supplied replace stored rows with the same primary key and the rest are added;
+        ``replace``: each supplied table replaces the stored table entirely. Tables supplied with no rows are
+        ignored in ``merge`` mode. The new dataset records what it was derived from.
+        """
+        import csv
+        import io
+
+        if mode not in ("merge", "replace"):
+            raise ValueError("mode must be 'merge' or 'replace'")
+        base = self._dataset(base_id)
+        unknown = sorted(set(texts) - set(SCHEMAS))
+        if unknown:
+            raise ValueError(f"unknown table(s): {unknown}")
+        out = {t: base.csv_text(t) for t in TABLE_ORDER}
+        changed = {}
+        for table, text in texts.items():
+            new_rows = list(csv.DictReader(io.StringIO(text.lstrip("\ufeff"))))
+            if mode == "replace":
+                out[table] = text
+                changed[table] = len(new_rows)
+                continue
+            if not new_rows:
+                continue
+            pk = SCHEMAS[table].primary_key
+            old_rows = list(csv.DictReader(io.StringIO(out[table])))
+            merged = {tuple(r.get(k) or "" for k in pk): r for r in old_rows}
+            for r in new_rows:
+                merged[tuple((r.get(k) or "").strip() for k in pk)] = r
+            cols = SCHEMAS[table].column_names
+            buf = io.StringIO()
+            w = csv.DictWriter(buf, fieldnames=cols, extrasaction="ignore", lineterminator="\n")
+            w.writeheader()
+            w.writerows({c: (r.get(c) or "") for c in cols} for r in merged.values())
+            out[table] = buf.getvalue()
+            changed[table] = len(new_rows)
+        if not changed:
+            raise ValueError("no rows supplied: nothing to add")
+        parent = self.ws.dataset_meta(base_id)
+        meta = {"origin": "derived", "derived_from": base_id, "derived_from_name": parent["name"], "mode": mode,
+                "tables_changed": changed, "parent_metadata": parent.get("metadata") or {}}
+        ds, report = Dataset.from_csv_texts(name or f"{parent['name']} (completed)", out, meta)
+        if ds is None:
+            return {"saved": False, "validation": report.to_dict()}
+        existed = ds.dataset_id in self.ws.dataset_ids()
+        did = self.ws.save_dataset(ds)
+        return {"saved": True, "dataset_id": did, "name": self.ws.dataset_meta(did)["name"],
+                "validation": report.to_dict(), "already_present": existed, "tables_changed": changed}
+
+    def completion_template(self, dataset_id: str) -> bytes:
+        """A real-sample coding template (GDP and tax rules) listing the dataset's real jurisdictions."""
+        ds = self._dataset(dataset_id)
+        codes = [r["jurisdiction_id"] for r in ds.tables["jurisdictions"]
+                 if not r.get("fictional") and len(str(r["jurisdiction_id"])) == 3]
+        if not codes:
+            raise ValueError("the dataset has no real (ISO 3166-1 alpha-3) jurisdictions to complete")
+        return self.template("real_sample", codes)
+
+    # ------------------------------------------------------------------ Research Suite (A-share releases)
+    @property
+    def suite(self):
+        if getattr(self, "_suite", None) is None:
+            from taxnetlab.suite import SuiteBridge
+
+            self._suite = SuiteBridge(self.ws)
+        return self._suite
+
+    def suite_status(self) -> dict[str, Any]:
+        from taxnetlab import suite
+
+        return {"core": suite.vendored(), "config": str(suite.suite_config_path()),
+                "config_found": suite.suite_config_path().is_file(), "language": suite.suite_language(),
+                "projects": self.suite.projects(), "workspace_folder": str(self.suite.folder)}
 
     @staticmethod
     def template(kind: str, candidates: list[str] | None = None) -> bytes:
@@ -208,10 +286,19 @@ class Api:
 
     # ------------------------------------------------------------------ guide (plan s 8, Phase 9)
     @staticmethod
-    def guide() -> dict[str, str]:
+    def guide(locale: str | None = None) -> dict[str, str]:
+        """The user guide and method notes; a translated file (``user_guide.<tag>.md``) is used where it exists."""
         from taxnetlab.buildinfo import resource_path
 
-        return {name: resource_path("guide", f"{name}.md").read_text(encoding="utf-8") for name in ("user_guide", "methods")}
+        out = {}
+        for name in ("user_guide", "methods"):
+            path = resource_path("guide", f"{name}.md")
+            if locale and locale.replace("-", "").isalnum():
+                translated = resource_path("guide", f"{name}.{locale}.md")
+                if translated.is_file():
+                    path = translated
+            out[name] = path.read_text(encoding="utf-8")
+        return out
 
     # ------------------------------------------------------------------ expectation register (plan s 7.5)
     def expectations(self) -> list[dict[str, Any]]:

@@ -39,6 +39,7 @@ class Workspace:
         self.expectations_dir = self.root / "expectations"
         self.replications_dir = self.root / "replications"
         self.logs_dir = self.root / "logs"
+        self.suite_dir = self.root / "suite_projects"
 
     def ensure(self) -> "Workspace":
         for d in (self.root, self.datasets_dir, self.runs_dir, self.exports_dir):

@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.0.0rc2 (12 November 2026)
+
+Second release candidate. See `docs/BUILD_1_0_RC2_STATUS.md` and `docs/SUITE_INTEGRATION.md`.
+
+* A-share Company Intelligence releases: the Research Suite page and `taxnetlab import-ashare` convert a release with the Research Suite's own converter (`rscore`, vendored unmodified and pinned to a commit), with the suite's review of names and places, saved jurisdiction choices, re-import, and hand-over into a Lab dataset that records its provenance (release, project, settings, outstanding review, converter commit). Suite projects are shared with ResearchSuite.exe in both directions; its recent projects and language are read from its settings.
+* Complete a dataset: a template listing the dataset's own jurisdictions for GDP and tax rules, and a derived dataset with rows added or tables replaced; the original is unchanged.
+* Simplified Chinese: the whole interface (every string), the user guide and the method notes.
+* Command-line hand-over: `taxnetlab --import PATH` (release, suite project, suite export or ZIP) and `--language TAG`.
+* Application icon (executable, installer, interface), in the Research Suite family; the installer records its folder in `HKCU\Software\InternationalTaxNetworkLab`.
+* Persistent homology runs without a period when only the link features are selected; web addresses in tables are links.
+
 ## 1.0.0rc1 (23 October 2026)
 
 Release candidate for 1.0. Plan v2.6. See `docs/BUILD_1_0_RC1_STATUS.md` and `RELEASING.md`.

@@ -1,6 +1,6 @@
 # Note: importing data from the A-share Company Intelligence scraper
 
-**Status:** recorded for later; no work done. **Date:** 23 October 2026. Based on a reading of `wenyileong/ashare-company-intelligence` v2.0.4.
+**Status:** superseded on 12 November 2026 by release 1.0.0rc2, which imports releases with the Research Suite's own converter (option 2 below, implemented once, in the suite, and vendored into the Lab); see the Research Suite page, `taxnetlab import-ashare` and `docs/SUITE_INTEGRATION.md`. The note is kept as the original assessment. **Date:** 23 October 2026. Based on a reading of `wenyileong/ashare-company-intelligence` v2.0.4.
 
 ## What the scraper holds that this software can use
 
