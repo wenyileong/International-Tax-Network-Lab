@@ -75,7 +75,7 @@
 | I4 | Sink centrality compares value share with GDP share (s 5). | | |
 | I5 | Conduit denominators (s 6). | | |
 | I6 | Entropy definitions and natural logarithm (s 7). | | |
-| I7 | GDP: the dataset's `gdp` attribute for the period, otherwise the latest period; GDP is required for every jurisdiction that appears in G2 or G3. | | |
+| I7 | GDP: the dataset's `gdp` attribute for the period, otherwise the latest earlier period (never a later one; a substitution is reported as a warning; since 1.0.0rc3, previously the latest period of any year); GDP is required for every jurisdiction that appears in G2 or G3. | | |
 | I8 | Revenue: the `operating_revenue` of the owned firm for the period, from `entity_financials`. Consolidated figures are flagged; deconsolidation is a data-preparation step outside the engine. Firms without revenue contribute no value. | | |
 | I9 | A conduit with an empty denominator (no sink-bound or sink-originating chains) has no conduit centrality (reported as empty, never as 0). | | |
 | I10 | Thresholds as stated: sink 10, conduit 1, adjustable for sensitivity. | | |

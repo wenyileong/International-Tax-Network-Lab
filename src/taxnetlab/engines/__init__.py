@@ -7,7 +7,7 @@ from taxnetlab.engines.compare import ModelComparisonEngine
 from taxnetlab.engines.demo import LinkSummaryEngine
 from taxnetlab.engines.gb2017 import ConduitsSinksEngine
 from taxnetlab.engines.ph import PersistentHomologyEngine
-from taxnetlab.engines.placeholders import ScalableTdaEngine
+from taxnetlab.engines.placeholders import IncomeTypesRoutingEngine, OwnershipRobustnessEngine, ScalableTdaEngine
 from taxnetlab.engines.sensitivity import SensitivityEngine
 from taxnetlab.engines.vtrl2018 import TaxRoutingEngine
 
@@ -22,7 +22,8 @@ def register(engine: Engine) -> None:
 
 
 for _engine in (LinkSummaryEngine(), ConduitsSinksEngine(), TaxRoutingEngine(), PersistentHomologyEngine(),
-                ModelComparisonEngine(), SensitivityEngine(), ScalableTdaEngine()):
+                ModelComparisonEngine(), SensitivityEngine(), ScalableTdaEngine(), IncomeTypesRoutingEngine(),
+                OwnershipRobustnessEngine()):
     register(_engine)
 
 
