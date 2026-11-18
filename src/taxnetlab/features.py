@@ -15,6 +15,7 @@ from typing import Any, Callable
 
 from taxnetlab.canonical import canonical_json, sha256_text
 from taxnetlab.datasets import Dataset
+from taxnetlab.gdp import gdp_for, substitution_warning
 from taxnetlab.views import _active
 
 
@@ -185,14 +186,7 @@ def build(dataset: Dataset, period: str, feature_ids: list[str], scaling: str,
 
 
 def _gdp(dataset: Dataset, period: str) -> dict[str, float]:
-    best: dict[str, tuple[str, float]] = {}
-    for a in dataset.tables["jurisdiction_attributes"]:
-        if a["attribute"].lower() != "gdp" or a["period"] > period:
-            continue
-        cur = best.get(a["jurisdiction_id"])
-        if cur is None or a["period"] > cur[0]:
-            best[a["jurisdiction_id"]] = (a["period"], a["value"])
-    return {j: v for j, (_, v) in best.items()}
+    return gdp_for(dataset, period)  # one rule for every engine (taxnetlab.gdp)
 
 
 def distance(u: list[float], v: list[float], metric: str) -> float:

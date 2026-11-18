@@ -1645,6 +1645,9 @@
       status.config_found ? "  ·  " + t("suite.config_found") : "  ·  " + t("suite.config_absent")]));
 
     const projectBox = el("div");
+    let projectsNow = status.projects;
+    const projectList = el("div");
+    async function refreshProjects() { projectsNow = (await api("GET", "suite")).projects; drawProjects(); }
     // ---- release card
     const relPath = el("input", { type: "text", class: "mono", style: "width:100%", value: S.suiteRelease || recall("suite.release") || "",
       "data-i18n-placeholder": "suite.release_ph", placeholder: t("suite.release_ph") });
@@ -1657,7 +1660,7 @@
       try {
         const info = await api("POST", "suite/inspect", { release: path });
         store("suite.release", path); S.suiteRelease = path;
-        relInfo.replaceChildren(releaseCard(info, status.projects));
+        relInfo.replaceChildren(releaseCard(info, projectsNow));
         applyI18n(relInfo);
       } catch (e) { relInfo.replaceChildren(el("p", { class: "err-text", text: e.message })); } finally { busy(readBtn, false); }
     }
@@ -1674,7 +1677,9 @@
       const counts = Object.entries(rc).map(([k, v]) => ({ table: tableName(k), rows: v }));
       const target = el("select", { class: "select" }, [el("option", { value: "", text: t("suite.new_project", { name: info.name }) })]
         .concat(projects.filter((p) => p.exists && !p.error).map((p) => el("option", { value: p.path, text: p.name + "  ·  " + t("suite.origin." + p.origin) }))));
-      if (S.suiteProject) target.value = S.suiteProject;
+      // default: the project this release was imported into before (same name), otherwise a new project
+      const same = projects.find((p) => p.exists && !p.error && p.name === info.name);
+      if (same) target.value = same.path;
       const all = el("input", { type: "checkbox", checked: true });
       const boxes = info.companies.map((c) => el("input", { type: "checkbox", value: c.security_code, checked: true }));
       const list = el("div", { class: "company-list", hidden: true }, info.companies.map((c, i) => el("label", { class: "field inline" },
@@ -1693,6 +1698,7 @@
           S.suiteProject = detail.path; store("suite.project", detail.path);
           out.replaceChildren(el("p", { class: "ok-text", text: t("suite.imported", { name: detail.name }) }));
           showProject(detail);
+          refreshProjects().catch(fail);
           projectBox.scrollIntoView({ behavior: "smooth", block: "start" });
         } catch (e) { out.replaceChildren(el("p", { class: "err-text", text: e.message })); } finally { busy(go, false); }
       } });
@@ -1717,17 +1723,22 @@
       const p = cleanPath(openPath.value);
       if (!p) { toast(t("suite.need_path")); return; }
       busy(openBtn, true);
-      try { const d = await api("POST", "suite/open", { path: p }); S.suiteProject = d.path; store("suite.project", d.path); showProject(d); }
+      try { const d = await api("POST", "suite/open", { path: p }); S.suiteProject = d.path; store("suite.project", d.path); showProject(d); await refreshProjects(); }
       catch (e) { fail(e); } finally { busy(openBtn, false); }
     } });
-    const rows = status.projects.map((p) => ({ name: p.name, origin: t("suite.origin." + p.origin),
-      entities: p.counts ? p.counts.entities : "", relations: p.counts ? p.counts.ownership : "",
-      latest: p.latest_report || "", state: p.error ? t("suite.damaged") : p.exists ? "" : t("suite.missing"), _p: p }));
-    root.append(el("div", { class: "card" }, [el("h2", { i18n: "suite.projects_title" }), el("p", { class: "muted small", i18n: "suite.projects_lede" }),
-      rows.length ? renderTable(["name", "origin", "entities", "relations", "latest", "state"], rows, (r) => {
+    function drawProjects() {
+      const rows = projectsNow.map((p) => ({ name: p.name, origin: t("suite.origin." + p.origin),
+        entities: p.counts ? p.counts.entities : "", relations: p.counts ? p.counts.ownership : "",
+        latest: p.latest_report || "", state: p.error ? t("suite.damaged") : p.exists ? "" : t("suite.missing"), _p: p }));
+      projectList.replaceChildren(rows.length ? renderTable(["name", "origin", "entities", "relations", "latest", "state"], rows, (r) => {
         if (!r._p.exists || r._p.error) return;
         api("GET", "suite/project?path=" + encodeURIComponent(r._p.path)).then((d) => { S.suiteProject = d.path; store("suite.project", d.path); showProject(d); }).catch(fail);
-      }) : el("p", { class: "muted", i18n: "suite.no_projects" }),
+      }) : el("p", { class: "muted", i18n: "suite.no_projects" }));
+      applyI18n(projectList);
+    }
+    drawProjects();
+    root.append(el("div", { class: "card" }, [el("h2", { i18n: "suite.projects_title" }), el("p", { class: "muted small", i18n: "suite.projects_lede" }),
+      projectList,
       el("p", { class: "muted small", text: t("suite.workspace_folder", { folder: status.workspace_folder }) }),
       el("div", { class: "controls" }, [el("label", { class: "field", style: "flex:1 1 360px" }, [el("span", { i18n: "suite.open_label" }), openPath]), openBtn])]));
     root.append(el("div", { class: "spacer" }), projectBox);
@@ -1870,7 +1881,9 @@
       } catch (e) { out.replaceChildren(el("p", { class: "err-text", text: e.message })); } finally { busy(go, false); }
     } });
     async function finish(res) {
-      out.replaceChildren(el("p", { class: res.saved ? "ok-text" : "err-text", text: res.saved ? t("complete.done", { id: res.dataset_id }) : t("data.import_blocked") }), issuesList(res.validation));
+      const skippedRows = Object.values(res.unfilled_rows_skipped || {}).reduce((a, b) => a + b, 0);
+      out.replaceChildren(el("p", { class: res.saved ? "ok-text" : "err-text", text: res.saved ? t("complete.done", { id: res.dataset_id }) : t("data.import_blocked") }),
+        skippedRows ? el("p", { class: "muted small", text: t("complete.skipped", { n: skippedRows }) }) : "", issuesList(res.validation));
       if (res.saved) { await loadDatasets(res.dataset_id); toast(t("complete.done", { id: res.dataset_id })); }
     }
     return el("div", { class: "card" }, [el("h2", { i18n: "complete.title" }), el("p", { class: "muted small", i18n: "complete.lede" }),

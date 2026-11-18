@@ -25,6 +25,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
+WINDOWS_RESERVED = {"CON", "PRN", "AUX", "NUL", *(f"COM{i}" for i in range(1, 10)), *(f"LPT{i}" for i in range(1, 10))}
 NAME_RE = re.compile(r"^[^\\/:*?\"<>|\x00-\x1f]{1,80}$")
 PROJECT_SUFFIXES = (".sqlite", ".db")
 #: Rejection reasons and review statuses the suite's importer reports (checked against the vendored code by a test).
@@ -102,12 +103,14 @@ class SuiteBridge:
     def project(self, path: str | Path, must_exist: bool = True):
         from rscore import services
 
-        p = Path(str(path)).expanduser()
+        p = _path(path)
         if p.suffix.lower() not in PROJECT_SUFFIXES:
             raise SuiteError(f"a suite project is a .sqlite file: {p}")
         p = p.resolve()
-        if must_exist and not p.is_file():
-            raise KeyError(f"no suite project at {p}")
+        if must_exist:
+            if not p.is_file():
+                raise KeyError(f"no suite project at {p}")
+            check_is_project(p)
         return services.Project(p)
 
     def projects(self) -> list[dict[str, Any]]:
@@ -147,14 +150,22 @@ class SuiteBridge:
         return {"counts": services.summary(project), "latest_report": latest.name if latest else None,
                 "lab_exports": [{"name": p.name, "path": str(p)} for p in exports[:10]]}
 
-    def create_project(self, name: str):
+    def create_project(self, name: str, unique: bool = False):
+        """A new project in the workspace. An existing name is an error, or with ``unique`` gets a numbered name:
+        the suite's own ``create_project`` would silently open the existing project instead."""
         from rscore import services
 
-        name = (name or "").strip()
-        if not NAME_RE.match(name) or name in (".", ".."):
+        name = (name or "").strip() if isinstance(name, str) else ""
+        if not NAME_RE.match(name) or name in (".", "..") or name.upper() in WINDOWS_RESERVED:
             raise SuiteError("a project name has 1 to 80 characters and none of \\ / : * ? \" < > |")
         self.folder.mkdir(parents=True, exist_ok=True)
-        project = services.create_project(self.folder / f"{name}.sqlite")
+        target, n = self.folder / f"{name}.sqlite", 1
+        while target.exists():
+            if not unique:
+                raise SuiteError(f"a project named '{name}' already exists; choose it as the target, or another name")
+            n += 1
+            target = self.folder / f"{name[:74]} ({n}).sqlite"
+        project = services.create_project(target)
         self._remember(project.path)
         return project
 
@@ -187,7 +198,7 @@ class SuiteBridge:
     @staticmethod
     def inspect_release(folder: str | Path) -> dict[str, Any]:
         """What a release folder holds, read from its manifest, before anything is imported."""
-        f = Path(str(folder)).expanduser()
+        f = _path(folder)
         m_path = f / "manifest.json"
         if not m_path.is_file():
             raise SuiteError(f"{f} has no manifest.json; choose the folder of an A-share Company Intelligence release")
@@ -195,6 +206,9 @@ class SuiteBridge:
             m = json.loads(m_path.read_text(encoding="utf-8"))
         except ValueError as exc:
             raise SuiteError(f"manifest.json cannot be read: {exc}") from None
+        if not isinstance(m, dict):
+            raise SuiteError("manifest.json is not a release manifest (a JSON object was expected)")
+        as_dict = lambda v: v if isinstance(v, dict) else {}  # noqa: E731
         companies = []
         c_path = f / "csv" / "companies.csv"
         if c_path.is_file():
@@ -202,11 +216,11 @@ class SuiteBridge:
                 for r in csv.DictReader(fh):
                     companies.append({"security_code": r.get("security_code"), "short_name": r.get("short_name_cn"),
                                       "name_en": r.get("legal_name_en") or None, "exchange": r.get("exchange")})
-        sw = m.get("software") or {}
-        return {"folder": str(f.resolve()), "name": m.get("name", f.name), "created_utc": m.get("created_utc"),
+        sw = as_dict(m.get("software"))
+        return {"folder": str(f.resolve()), "name": str(m.get("name") or f.name), "created_utc": m.get("created_utc"),
                 "software": f"{sw.get('name', '')} {sw.get('version', '')}".strip() or None,
-                "row_counts": m.get("row_counts") or {}, "citation": m.get("citation"),
-                "pseudonymised": bool((m.get("pseudonymisation") or {}).get("applied")),
+                "row_counts": as_dict(m.get("row_counts")), "citation": m.get("citation"),
+                "pseudonymised": bool(as_dict(m.get("pseudonymisation")).get("applied")),
                 "fingerprint": m.get("database_fingerprint"), "companies": companies,
                 "tables_present": sorted(p.stem for p in (f / "csv").glob("*.csv")) if (f / "csv").is_dir() else []}
 
@@ -217,20 +231,35 @@ class SuiteBridge:
         from rscore import services
 
         info = self.inspect_release(release)
-        if project_path:
-            project = self.project(project_path)
-            self._remember(project.path)
-        else:
-            project = self.create_project(project_name or _safe_name(info["name"]))
+        if not info["tables_present"]:
+            raise SuiteError(f"{info['folder']} has no csv folder with tables; it is not a complete release")
         try:
             mc = float(min_confidence or 0.0)
         except (TypeError, ValueError):
             raise SuiteError("min_confidence must be a number between 0 and 1") from None
         if not 0.0 <= mc <= 1.0:
             raise SuiteError("min_confidence must be a number between 0 and 1")
+        created = not project_path
+        if project_path:
+            project = self.project(project_path)
+            self._remember(project.path)
+        else:
+            # an explicit name must be free; a name taken from the release is numbered if it is taken
+            project = (self.create_project(project_name) if project_name
+                       else self.create_project(_safe_name(info["name"]), unique=True))
         codes = tuple(str(c).strip() for c in companies if str(c).strip())
-        services.run_import(project, info["folder"], companies=codes, assume_consolidated=bool(assume_consolidated),
-                            accept_suggestions=bool(accept_suggestions), min_confidence=mc)
+        try:
+            services.run_import(project, info["folder"], companies=codes, assume_consolidated=bool(assume_consolidated),
+                                accept_suggestions=bool(accept_suggestions), min_confidence=mc)
+        except Exception as exc:
+            if created:  # do not leave an empty project behind a failed first import
+                import shutil
+
+                project.path.unlink(missing_ok=True)
+                shutil.rmtree(project.path.with_name(project.name + "_files"), ignore_errors=True)
+            if isinstance(exc, (AttributeError, TypeError, KeyError, IndexError)):
+                raise SuiteError(f"the release could not be read; its manifest or tables are malformed ({type(exc).__name__}: {exc})") from None
+            raise
         return self.detail(project.path)
 
     def reimport(self, project_path: str | Path) -> dict[str, Any]:
@@ -278,7 +307,7 @@ class SuiteBridge:
                              trim_jurisdictions: bool = True) -> dict[str, Any]:
         from rscore import services
 
-        f = Path(str(folder)).expanduser().resolve()
+        f = _path(folder).resolve()
         if not f.is_dir():
             raise SuiteError(f"no folder at {f}")
         texts = {p.stem: p.read_text(encoding="utf-8-sig") for p in sorted(f.glob("*.csv"))}
@@ -289,7 +318,7 @@ class SuiteBridge:
             texts["jurisdictions"], trimmed = trim_unused_jurisdictions(texts)
         if project is None and f.parent.name == "lab_exports" and f.parent.parent.name.endswith("_files"):
             candidate = f.parent.parent.with_name(f.parent.parent.name[:-len("_files")] + ".sqlite")
-            project = services.Project(candidate) if candidate.is_file() else None
+            project = self.project(candidate) if candidate.is_file() else None
         provenance: dict[str, Any] = {"origin": "research_suite", "export_folder": str(f), **vendored(),
                                       "unused_registry_jurisdictions_dropped": trimmed}
         if project is not None:
@@ -304,6 +333,46 @@ class SuiteBridge:
                 provenance["revenue_conflicts"] = data.get("review_revenue", 0)
         label = name or (f"{project.name} (Research Suite)" if project is not None else f"{f.name} (Research Suite)")
         return api.import_csv(label, texts, metadata=provenance)
+
+
+def is_suite_export(folder: Path) -> bool:
+    """Whether a folder is a Lab export written by the suite (``<project>_files/lab_exports/<stamp>``)."""
+    f = Path(folder).resolve()
+    return f.parent.name == "lab_exports" and f.parent.parent.name.endswith("_files")
+
+
+def _path(text: str | Path) -> Path:
+    try:
+        return Path(str(text)).expanduser()
+    except RuntimeError:  # "~user" for a user that does not exist
+        raise SuiteError(f"the path cannot be resolved: {text}") from None
+
+
+def check_is_project(path: Path) -> None:
+    """Refuse a file that is not a Research Suite project, without changing it.
+
+    The suite core creates its tables in whatever database it opens, so opening a file that merely has a
+    ``.sqlite`` name would write the suite's schema into another program's database. The file is therefore
+    examined read-only first: it must be an SQLite database carrying the suite's ``meta`` table.
+    """
+    import sqlite3
+
+    import rscore
+
+    try:
+        conn = sqlite3.connect(f"{path.as_uri()}?mode=ro", uri=True)
+        try:
+            row = conn.execute("SELECT value FROM meta WHERE key = 'schema_generation'").fetchone()
+        finally:
+            conn.close()
+        generation = int(row[0]) if row else 0
+    except (sqlite3.Error, ValueError, TypeError):
+        generation = 0
+    if generation < 1:
+        raise SuiteError(f"{path.name} is not a Research Suite project")
+    if generation > rscore.SCHEMA_GENERATION:
+        raise SuiteError(f"{path.name} was made by a newer Research Suite (schema generation {generation}); this "
+                         f"version of the Lab reads up to generation {rscore.SCHEMA_GENERATION}")
 
 
 def trim_unused_jurisdictions(texts: dict[str, str]) -> tuple[str, int]:
@@ -324,17 +393,17 @@ def trim_unused_jurisdictions(texts: dict[str, str]) -> tuple[str, int]:
                 if value and col and (col.endswith("jurisdiction_id") or col.endswith("_jurisdiction")):
                     used.add(value)
     rows = list(csv.DictReader(io.StringIO(texts["jurisdictions"])))
-    by_id = {r["jurisdiction_id"]: r for r in rows}
+    by_id = {r.get("jurisdiction_id"): r for r in rows}
     frontier = list(used)
     while frontier:
         parent = (by_id.get(frontier.pop()) or {}).get("parent_jurisdiction_id")
         if parent and parent not in used:
             used.add(parent)
             frontier.append(parent)
-    kept = [r for r in rows if r["jurisdiction_id"] in used]
+    kept = [{k: v for k, v in r.items() if k is not None} for r in rows if r.get("jurisdiction_id") in used]
     buf = io.StringIO()
     header = next(csv.reader(io.StringIO(texts["jurisdictions"])))
-    w = csv.DictWriter(buf, fieldnames=header, lineterminator="\n")
+    w = csv.DictWriter(buf, fieldnames=header, lineterminator="\n", extrasaction="ignore")
     w.writeheader()
     w.writerows(kept)
     return buf.getvalue(), len(rows) - len(kept)

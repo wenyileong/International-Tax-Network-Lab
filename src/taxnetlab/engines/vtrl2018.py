@@ -27,6 +27,7 @@ from typing import Any
 
 from taxnetlab import progress
 from taxnetlab.datasets import Dataset
+from taxnetlab.gdp import gdp_for, substitution_warning
 from taxnetlab.engines.base import (
     INVALID_INPUT,
     OK,
@@ -161,16 +162,7 @@ class _World:
 
 
 def _gdp(dataset: Dataset, period: str) -> dict[str, float]:
-    """GDP per jurisdiction: the value for the period if present, otherwise the latest period."""
-    best: dict[str, tuple[str, float]] = {}
-    for a in dataset.tables["jurisdiction_attributes"]:
-        if a["attribute"].lower() != "gdp":
-            continue
-        j, per = a["jurisdiction_id"], a["period"]
-        cur = best.get(j)
-        if cur is None or per == period or (cur[0] != period and per > cur[0]):
-            best[j] = (per, a["value"])
-    return {j: v for j, (_, v) in best.items()}
+    return gdp_for(dataset, period)  # one rule for every engine (taxnetlab.gdp)
 
 
 def _te(t_host: float, key: float) -> float:
@@ -331,6 +323,10 @@ class TaxRoutingEngine(Engine):
         warnings: list[str] = []
         if world.unverified:
             warnings.append(f"{world.unverified} legal row(s) used are not verified.")
+        if params["centrality_weights"] == "gdp_product" or params["world_average"] == "gdp":
+            note = substitution_warning(dataset, world.period, codes)
+            if note:
+                warnings.append(note)
 
         # Admissible lower bounds h_P(u): cheapest cost from intermediate u to P on non-first legs,
         # with the penalty counted for u and every later intermediate (reverse Dijkstra).
@@ -367,6 +363,7 @@ class TaxRoutingEngine(Engine):
                 per_pair = min(params["max_routes_per_pair"], max(budget, 1))
                 rng = fast.count(s, p, max(limit_range, limit_strict) if not budget_hit else limit_strict, limit_strict,
                                  depth, per_pair)
+                pair_capped = rng["capped"]  # max_routes_per_pair (or the remaining budget) reached for this pair
                 if budget_hit:
                     rng["capped"] = True
                 budget -= rng["n"]
@@ -377,7 +374,7 @@ class TaxRoutingEngine(Engine):
                 if not rng["n"]:
                     rng["n"], rng["range"] = rng["n_strict"], dict(rng["strict"])
                 capped = rng["capped"]
-                capped_pairs += capped
+                capped_pairs += pair_capped and per_pair == params["max_routes_per_pair"]
                 sets[(s, p)] = rng
                 pair_rows.append({
                     "host": s, "home": p, "direct_relief": direct["relief"], "direct_wht": direct["w"],

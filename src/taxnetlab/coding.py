@@ -214,6 +214,19 @@ def template_zip(kind: str, candidates: list[str] | None = None) -> bytes:
     return buf.getvalue()
 
 
+def rezip_template(data: bytes, texts: dict[str, str]) -> bytes:
+    """The same template ZIP with some table files replaced (other files, order and fixed times kept)."""
+    out = io.BytesIO()
+    with zipfile.ZipFile(io.BytesIO(data)) as src, zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as dst:
+        for info in src.infolist():
+            table = info.filename[:-4] if info.filename.endswith(".csv") else None
+            body = texts[table].encode("utf-8") if table in texts else src.read(info)
+            new = zipfile.ZipInfo(info.filename, date_time=info.date_time)
+            new.compress_type = zipfile.ZIP_DEFLATED
+            dst.writestr(new, body)
+    return out.getvalue()
+
+
 MAX_UNZIPPED = 64 * 1024 * 1024
 
 

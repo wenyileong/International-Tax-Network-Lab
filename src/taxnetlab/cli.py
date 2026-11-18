@@ -83,7 +83,12 @@ def handover(api: Api, path: str | None, language: str | None) -> dict:
         detail = api.suite.open_project(p)
         startup.update(page="suite", project=detail["path"])
     elif p.is_dir() and any(p.glob("*.csv")):
-        res = api.suite.import_export_folder(api, p)
+        from taxnetlab.suite import is_suite_export
+
+        if is_suite_export(p):
+            res = api.suite.import_export_folder(api, p)
+        else:  # an ordinary folder of table CSV files: no suite provenance to claim, nothing trimmed
+            res = api.import_csv(p.name, {f.stem.lower(): f.read_text(encoding="utf-8-sig") for f in sorted(p.glob("*.csv"))})
         if not res["saved"]:
             raise ValueError("the tables did not validate; open the Data page for the report")
         startup.update(page="overview", dataset_id=res["dataset_id"])
@@ -506,6 +511,11 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
+    for stream in (sys.stdout, sys.stderr):  # a console or pipe that cannot show a name must not stop the program
+        try:
+            stream.reconfigure(errors="backslashreplace")
+        except (AttributeError, ValueError):
+            pass
     if not argv or (argv[0].startswith("--") and argv[0] not in ("--help", "-h", "--version")):
         argv = ["serve", *argv]
     args = build_parser().parse_args(argv)

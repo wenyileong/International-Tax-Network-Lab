@@ -20,6 +20,7 @@ from typing import Any
 
 from taxnetlab import progress
 from taxnetlab.datasets import Dataset
+from taxnetlab.gdp import gdp_for, substitution_warning
 from taxnetlab.engines.base import (
     OK,
     REPRODUCTION,
@@ -42,15 +43,7 @@ SUMMARY_COLUMNS = ("measure", "value")
 
 
 def _gdp(dataset: Dataset, period: str) -> dict[str, float]:
-    best: dict[str, tuple[str, float]] = {}
-    for a in dataset.tables["jurisdiction_attributes"]:
-        if a["attribute"].lower() != "gdp":
-            continue
-        j, per = a["jurisdiction_id"], a["period"]
-        cur = best.get(j)
-        if cur is None or per == period or (cur[0] != period and per > cur[0]):
-            best[j] = (per, a["value"])
-    return {j: v for j, (_, v) in best.items()}
+    return gdp_for(dataset, period)  # one rule for every engine (taxnetlab.gdp)
 
 
 def _entropy(values: list[float]) -> float | None:
@@ -187,10 +180,11 @@ class ConduitsSinksEngine(Engine):
                     nmo = mo * w
                     if nmo < threshold - 1e-15:
                         continue
+                    if paths >= budget:  # one more path is needed than the budget allows: incomplete
+                        budget_hit = True
+                        break
                     npath = path + (owner,)
                     paths += 1
-                    if paths >= budget:
-                        budget_hit = True
                     countries: list[str] = []
                     for f in npath:  # merge adjacent firms in the same country (stated)
                         c = where[f]
@@ -202,6 +196,9 @@ class ConduitsSinksEngine(Engine):
                         if value > best.get(key, -1.0):
                             best[key] = value
                     stack.append((owner, nmo, npath))
+        note = substitution_warning(dataset, params["period"], set(where.values()))
+        if note:
+            warnings.append(note)
         if budget_hit:
             warnings.append(f"The chain budget ({params['chain_budget']}) was reached; results use the paths found. "
                             "Raise chain_budget or the ownership threshold.")

@@ -1,5 +1,25 @@
 # Changelog
 
+## Unreleased (review of 1.0.0rc2)
+
+Engine corrections found by testing each engine against brute-force or independently written references
+(`tests/test_engine_oracles.py`). Results on datasets with GDP for the analysed period are unchanged; every
+approved regression snapshot still matches.
+
+* GDP: one rule for every engine (`taxnetlab.gdp`): the period's value, otherwise the latest earlier value, never
+  a later one; a substitution is reported. Conduits and sinks and tax routing previously fell back to GDP of any
+  later year, while the topology features did not, so one dataset could be normalised differently on different pages.
+* Sensitivity sweep: the default period is the swept engine's own (the revenue period for conduits and sinks).
+  A dataset whose tax rules are for a later year than its revenue previously made every default draw fail.
+* Tax routing: when the route budget is reached, the warning no longer also claims that the per-pair route limit
+  was reached.
+* Conduits and sinks: a chain budget equal to the number of paths is no longer reported as reached.
+* Research Suite integration (from the code review): a file that is not a suite project is refused without being
+  changed; a new project never silently reuses an existing one; malformed releases are refused without leaving an
+  empty project; the completion template no longer replaces stored jurisdictions, and rows left blank are ignored;
+  an ordinary CSV folder opened with `--import` claims no suite provenance; console output cannot fail on Chinese
+  names; malformed requests answer 400 or 404 instead of 500.
+
 ## 1.0.0rc2 (12 November 2026)
 
 Second release candidate. See `docs/BUILD_1_0_RC2_STATUS.md` and `docs/SUITE_INTEGRATION.md`.

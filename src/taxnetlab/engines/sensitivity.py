@@ -107,9 +107,12 @@ class SensitivityEngine(Engine):
                     if not rep.ok:
                         r.error("bad_grid", f"{name}={v}: " + "; ".join(i.message for i in rep.errors),
                                 params={"detail": f"{name}={v}"})
-        if params.get("period") is None:
-            periods = sorted({row["period"] for t in ("tax_domestic", "entity_financials") for row in dataset.tables[t]})
-            params["period"] = periods[-1] if periods else None
+        if params.get("period") is None and r.ok:
+            # the swept engine's own default period (its revenue period for gb2017, tax period for vtrl2018 ...),
+            # so that a default sweep runs wherever the engine itself runs
+            tp, _ = target.resolve_parameters({})
+            target.validate(dataset, tp)
+            params["period"] = tp.get("period")
         return r
 
     def _run(self, dataset: Dataset, params: dict[str, Any]) -> EngineResult:

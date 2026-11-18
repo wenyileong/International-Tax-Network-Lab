@@ -111,6 +111,8 @@ class Api:
         unknown = set(params) - allowed
         if unknown:
             raise ValueError(f"unknown generator parameter(s): {sorted(unknown)}")
+        if not isinstance(params.get("name") or "", str):
+            raise ValueError("'name' must be text")
         merged = {**synthetic.DEFAULT_PARAMS, **{k: v for k, v in params.items() if v not in (None, "")}}
         ds = synthetic.generate(**merged)
         did = self.ws.save_dataset(ds)
@@ -118,6 +120,8 @@ class Api:
 
     def import_csv(self, name: str, texts: dict[str, str], mapping: dict[str, dict[str, str]] | None = None,
                    metadata: dict[str, Any] | None = None) -> dict[str, Any]:
+        if not all(isinstance(v, str) or v is None for v in texts.values()):
+            raise ValueError("'tables' must map table names to CSV text")
         meta = dict(metadata or {"origin": "csv_import"}) | ({"column_mapping": mapping} if mapping else {})
         ds, report = Dataset.from_csv_texts(name, texts, meta, mapping=mapping)
         if ds is None:
@@ -137,8 +141,11 @@ class Api:
         """Complete a dataset: a new dataset with some tables added or replaced (the original is unchanged).
 
         ``merge``: rows supplied replace stored rows with the same primary key and the rest are added;
-        ``replace``: each supplied table replaces the stored table entirely. Tables supplied with no rows are
-        ignored in ``merge`` mode. The new dataset records what it was derived from.
+        ``replace``: each supplied table replaces the stored table entirely. In ``merge`` mode column names are
+        matched without regard to case, tables supplied with no rows are ignored, and so are unfilled template
+        rows (rows with nothing but their key and the template's ``verified = false``), so that a completion
+        template can be uploaded without deleting the rows left blank. The new dataset records what it was
+        derived from.
         """
         import csv
         import io
@@ -150,21 +157,32 @@ class Api:
         if unknown:
             raise ValueError(f"unknown table(s): {unknown}")
         out = {t: base.csv_text(t) for t in TABLE_ORDER}
-        changed = {}
+        changed: dict[str, int] = {}
+        skipped: dict[str, int] = {}
         for table, text in texts.items():
+            if not isinstance(text, str):
+                raise ValueError(f"table '{table}' must be CSV text")
             new_rows = list(csv.DictReader(io.StringIO(text.lstrip("\ufeff"))))
             if mode == "replace":
                 out[table] = text
                 changed[table] = len(new_rows)
                 continue
+            pk = SCHEMAS[table].primary_key
+            cols = SCHEMAS[table].column_names
+            # headers as the importer reads them: trimmed, case-insensitive
+            new_rows = [{(k or "").strip().lower(): (v or "").strip() for k, v in r.items() if isinstance(v, str) or v is None}
+                        for r in new_rows]
+            filled = [r for r in new_rows
+                      if any(r.get(c) and not (c == "verified" and r[c].lower() == "false") for c in cols if c not in pk)]
+            if len(filled) < len(new_rows):
+                skipped[table] = len(new_rows) - len(filled)
+            new_rows = filled
             if not new_rows:
                 continue
-            pk = SCHEMAS[table].primary_key
             old_rows = list(csv.DictReader(io.StringIO(out[table])))
             merged = {tuple(r.get(k) or "" for k in pk): r for r in old_rows}
             for r in new_rows:
-                merged[tuple((r.get(k) or "").strip() for k in pk)] = r
-            cols = SCHEMAS[table].column_names
+                merged[tuple(r.get(k) or "" for k in pk)] = r
             buf = io.StringIO()
             w = csv.DictWriter(buf, fieldnames=cols, extrasaction="ignore", lineterminator="\n")
             w.writeheader()
@@ -172,17 +190,19 @@ class Api:
             out[table] = buf.getvalue()
             changed[table] = len(new_rows)
         if not changed:
-            raise ValueError("no rows supplied: nothing to add")
+            raise ValueError("no filled rows supplied: nothing to add" if skipped else "no rows supplied: nothing to add")
         parent = self.ws.dataset_meta(base_id)
         meta = {"origin": "derived", "derived_from": base_id, "derived_from_name": parent["name"], "mode": mode,
-                "tables_changed": changed, "parent_metadata": parent.get("metadata") or {}}
+                "tables_changed": changed, "unfilled_rows_skipped": skipped,
+                "parent_metadata": parent.get("metadata") or {}}
         ds, report = Dataset.from_csv_texts(name or f"{parent['name']} (completed)", out, meta)
         if ds is None:
-            return {"saved": False, "validation": report.to_dict()}
+            return {"saved": False, "validation": report.to_dict(), "unfilled_rows_skipped": skipped}
         existed = ds.dataset_id in self.ws.dataset_ids()
         did = self.ws.save_dataset(ds)
         return {"saved": True, "dataset_id": did, "name": self.ws.dataset_meta(did)["name"],
-                "validation": report.to_dict(), "already_present": existed, "tables_changed": changed}
+                "validation": report.to_dict(), "already_present": existed, "tables_changed": changed,
+                "unfilled_rows_skipped": skipped}
 
     def completion_template(self, dataset_id: str) -> bytes:
         """A real-sample coding template (GDP and tax rules) listing the dataset's real jurisdictions."""
@@ -191,7 +211,12 @@ class Api:
                  if not r.get("fictional") and len(str(r["jurisdiction_id"])) == 3]
         if not codes:
             raise ValueError("the dataset has no real (ISO 3166-1 alpha-3) jurisdictions to complete")
-        return self.template("real_sample", codes)
+        from taxnetlab.coding import read_template_zip, rezip_template
+
+        # The dataset already holds these jurisdictions: the template must not carry rows that would replace them.
+        data = self.template("real_sample", codes)
+        texts = read_template_zip(data)
+        return rezip_template(data, {"jurisdictions": texts["jurisdictions"].splitlines()[0] + "\n"})
 
     # ------------------------------------------------------------------ Research Suite (A-share releases)
     @property
@@ -293,7 +318,7 @@ class Api:
         out = {}
         for name in ("user_guide", "methods"):
             path = resource_path("guide", f"{name}.md")
-            if locale and locale.replace("-", "").isalnum():
+            if locale and len(locale) <= 35 and locale.replace("-", "").isalnum():
                 translated = resource_path("guide", f"{name}.{locale}.md")
                 if translated.is_file():
                     path = translated
@@ -314,6 +339,8 @@ class Api:
     def freeze_expectation(self, draft: dict[str, Any], frozen_by: str) -> dict[str, Any]:
         from taxnetlab.expectations import Register
 
+        if not isinstance(draft, dict):
+            raise ValueError("'entry' must be an expectation entry (a JSON object)")
         return Register(self.ws.expectations_dir).freeze(draft, frozen_by)
 
     def check_replication(self, entry_id: str, run_id: str) -> dict[str, Any]:

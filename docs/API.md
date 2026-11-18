@@ -81,8 +81,11 @@ A real-sample coding template (GDP and tax rules) listing the dataset's real jur
 Complete a dataset: a new dataset with some tables added or replaced (the original is unchanged).
 
 ``merge``: rows supplied replace stored rows with the same primary key and the rest are added;
-``replace``: each supplied table replaces the stored table entirely. Tables supplied with no rows are
-ignored in ``merge`` mode. The new dataset records what it was derived from.
+``replace``: each supplied table replaces the stored table entirely. In ``merge`` mode column names are
+matched without regard to case, tables supplied with no rows are ignored, and so are unfilled template
+rows (rows with nothing but their key and the template's ``verified = false``), so that a completion
+template can be uploaded without deleting the rows left blank. The new dataset records what it was
+derived from.
 
 ### `engines() -> 'list[dict[str, Any]]'`
 

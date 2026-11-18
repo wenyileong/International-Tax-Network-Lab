@@ -243,6 +243,16 @@ class Handler(BaseHTTPRequestHandler):
             self._error(404, "not_found", str(exc.args[0]) if exc.args else "not found")
         except (ValueError, TypeError) as exc:
             self._error(400, "bad_request", str(exc))
+        except OSError as exc:
+            import errno
+
+            # a name the file system cannot hold (too long, or characters Windows forbids) names nothing that exists
+            if exc.errno in (errno.ENAMETOOLONG, errno.EINVAL) or getattr(exc, "winerror", None) in (123, 206):
+                self._error(404, "not_found", "no such item")
+            else:
+                traceback.print_exc()
+                logging.getLogger("taxnetlab").exception("request failed: %s %s", method, path)
+                self._error(500, "internal_error", f"{type(exc).__name__}: {exc}")
         except Exception as exc:  # pragma: no cover - logged for the console and the log file
             traceback.print_exc()
             logging.getLogger("taxnetlab").exception("request failed: %s %s", method, path)
@@ -466,6 +476,16 @@ def _suite_call(fn, *args, **kwargs):
         raise ValueError(str(exc)) from None
     except __import__("sqlite3").DatabaseError as exc:
         raise ValueError(f"not a Research Suite project, or the file is damaged: {exc}") from None
+    except OSError as exc:
+        if exc.errno in (36, 22) or getattr(exc, "winerror", None) in (123, 206):  # name too long or invalid
+            raise ValueError(f"the path is not valid: {exc.strerror}") from None
+        raise
+    except RuntimeError as exc:
+        from rscore.store import StoreError
+
+        if isinstance(exc, StoreError):
+            raise ValueError(str(exc)) from None
+        raise
 
 
 def serve(api: Api, port: int | None = None, open_browser: bool = True, ready: threading.Event | None = None,

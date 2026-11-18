@@ -32,7 +32,7 @@ Datasets are **content-addressed**: the identifier is a hash of the tables, so t
 
 Unverified legal rows can be used, but every result that relies on them is flagged.
 
-**Completing a dataset.** A method may need data the dataset lacks, such as GDP for conduits and sinks or tax rules for tax routes. Under **Complete this dataset** on the Data page, download a template that already lists the dataset's jurisdictions, fill in the rows you need (each with a source), delete the rest and upload it. The result is a new dataset that records what it was completed from; the original is unchanged. *Add rows* keeps the stored rows and replaces only rows with the same key; *Replace whole tables* replaces each table you supply.
+**Completing a dataset.** A method may need data the dataset lacks, such as GDP for conduits and sinks or tax rules for tax routes. Under **Complete this dataset** on the Data page, download a template that already lists the dataset's jurisdictions, fill in the rows you need (each with a source) and upload it; rows left blank are ignored. The result is a new dataset that records what it was completed from; the original is unchanged. *Add rows* keeps the stored rows and replaces only rows with the same key; *Replace whole tables* replaces each table you supply.
 
 ## 4. Firm-level data from A-share Company Intelligence
 
