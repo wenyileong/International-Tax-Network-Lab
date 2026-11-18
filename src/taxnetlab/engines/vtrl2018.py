@@ -113,17 +113,24 @@ class _World:
                     self.treaty_basis[pair] = "general_indeterminate"
                 elif oc.status == INDETERMINATE:
                     self.treaty_basis[pair] = "treaty_contingent"
-        # I2: world average CIT excluding each jurisdiction.
+        # Minimum tax scenario (extension; plan F3): a qualified domestic top-up tax in every jurisdiction raises
+        # the tax borne on underlying profit to t + max(0, m - t)(1 - c). Rates at which a jurisdiction taxes the
+        # dividends it receives stay statutory: dividends between group members are outside the minimum tax base.
+        m, c = params.get("minimum_tax_rate", 0.0) or 0.0, params.get("substance_carve_out", 0.0) or 0.0
+        self.minimum_tax = (m, c)
+        self.borne = {k: self.cit[k] + max(0.0, m - self.cit[k]) * (1.0 - c) for k in self.cit}
+        # I2: world average CIT excluding each jurisdiction (of the tax borne, which is the statutory rate unless
+        # the minimum tax scenario is on).
         self.tbar: dict[str, float] = {}
         for k in self.codes:
             others = [j for j in self.codes if j != k]
             if not others:
-                self.tbar[k] = self.cit[k]
+                self.tbar[k] = self.borne[k]
             elif params["world_average"] == "gdp":
                 total = math.fsum(self.gdp[j] for j in others)
-                self.tbar[k] = math.fsum(self.cit[j] * self.gdp[j] for j in others) / total
+                self.tbar[k] = math.fsum(self.borne[j] * self.gdp[j] for j in others) / total
             else:
-                self.tbar[k] = math.fsum(self.cit[j] for j in others) / len(others)
+                self.tbar[k] = math.fsum(self.borne[j] for j in others) / len(others)
         self._leg_cache: dict[tuple[str, str, bool], dict[str, Any]] = {}
 
     def withholding(self, s: str, p: str) -> tuple[float, str]:
@@ -142,7 +149,7 @@ class _World:
         method = self.relief_of(p, s)
         t_p = self.cit[p]
         if first:
-            t_src, src_basis = self.cit[s], "statutory"
+            t_src, src_basis = self.borne[s], ("statutory" if self.borne[s] == self.cit[s] else "minimum_tax")
         elif method == "credit":
             t_src, src_basis = self.tbar[s], "world_average_excluding_conduit"  # s 5, I3
         else:
@@ -202,6 +209,12 @@ class TaxRoutingEngine(Engine):
                       description="Weighting of the world-average CIT used for conduits (I2)."),
             Parameter("centrality_weights", "choice", "gdp_product", choices=("gdp_product", "unweighted"),
                       description="Pair weights for BTWNS, STRCT, OCCUR and the averages (I8)."),
+            Parameter("minimum_tax_rate", "float", 0.0, minimum=0.0, maximum=0.5, unit="rate",
+                      description="Global minimum tax scenario (extension, not in the source): every jurisdiction "
+                                  "tops up the tax on underlying profit to this rate; 0 is off."),
+            Parameter("substance_carve_out", "float", 0.0, minimum=0.0, maximum=1.0, unit="share of profit",
+                      description="Share of profit excluded from the top-up (the substance-based income exclusion); "
+                                  "0 tops up all profit, 1 none."),
             Parameter("overrides", "overrides", [],
                       description="Scenario overrides: cit, wht, relief, treaty, relief_pair (spec s 9)."),
             Parameter("eligibility", "choice", "assume_eligible", choices=MODES,
@@ -345,7 +358,7 @@ class TaxRoutingEngine(Engine):
                 if p == s:
                     continue
                 direct = world.leg(s, p, True)
-                t_s = world.cit[s]
+                t_s = world.borne[s]  # the statutory rate unless the minimum tax scenario raises it
                 if math.isinf(dist.get(p, math.inf)):
                     continue  # no route can carry income (I13)
                 route = self._path(prev, s, p)
@@ -457,6 +470,16 @@ class TaxRoutingEngine(Engine):
                        f"{params['holding_days']} days; beneficial ownership {params['assume_beneficial_ownership']}, "
                        f"principal purpose test {params['assume_ppt']}, limitation on benefits {params['assume_lob']}. "
                        "This is an extension of the source, which assumes every treaty benefit applies."]
+        m, c = world.minimum_tax
+        if m > 0:
+            raised = sorted(k for k in codes if world.borne[k] > world.cit[k])
+            assumptions.append(
+                f"Global minimum tax scenario (an extension of the source, which predates it): a qualified domestic "
+                f"minimum top-up tax at {m} in every jurisdiction, with {c} of profit excluded for substance, raises the "
+                f"tax borne on underlying profit to t + max(0, {m} - t)(1 - {c}) in {len(raised)} jurisdiction(s)"
+                f"{': ' + ', '.join(raised[:12]) if raised else ''}. It applies to the source's profit tax and to the "
+                "world average used for conduits under credit relief; tax on dividends received and withholding taxes "
+                "are unchanged, because dividends between group members are outside the minimum tax base.")
         return EngineResult(OK, {"pairs": pair_rows, "legs": leg_rows, "centrality": centrality_rows,
                                  "summary": summary}, trace, warnings, assumptions)
 

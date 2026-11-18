@@ -58,6 +58,10 @@ ROUTES: tuple[tuple[str, str, str], ...] = (
     ("GET", "/api/runs/{run_id}/outputs/{name}.csv", "an output table as stored"),
     ("GET", "/api/runs/{run_id}/record.json", "the run record"),
     ("GET", "/api/runs/{run_id}/report.html", "self-contained HTML report"),
+    ("GET", "/api/runs/{run_id}/appendix.md", "methods appendix (also appendix.html and appendix.docx)"),
+    ("GET", "/api/runs/{run_id}/diff?other=RUN_ID", "what differs between two runs"),
+    ("GET", "/api/datasets/{dataset_id}/changes?from=DATE&to=DATE", "ownership relations added, removed or changed"),
+    ("GET", "/api/reference", "GDP reference sets added from World Bank files"),
     ("GET", "/api/runs/{run_id}/package.zip?include_outputs=true|false", "export package by reproducibility tier"),
     ("GET", "/api/jobs", "background runs"),
     ("GET", "/api/jobs/{job_id}", "one background run: state, progress, run id"),
@@ -75,6 +79,10 @@ ROUTES: tuple[tuple[str, str, str], ...] = (
     ("POST", "/api/runs", "execute and store a run {engine_id, dataset_id, parameters, research_question}"),
     ("POST", "/api/runs/{run_id}/replay", "re-execute a run and compare output hashes"),
     ("POST", "/api/jobs", "execute a run in the background (same body as /api/runs); 202"),
+    ("POST", "/api/reference", "add a World Bank indicator CSV {csv_base64, retrieved, filename?}"),
+    ("POST", "/api/datasets/{dataset_id}/complete_reference", "add GDP from a reference set {reference_id, period, name?}"),
+    ("POST", "/api/suite/import_job", "import an A-share release in the background (body as /api/suite/import); 202"),
+    ("POST", "/api/pick", "open the system's file or folder dialog {kind: folder|sqlite|zip|csv}"),
     ("POST", "/api/jobs/{job_id}/cancel", "cancel a background run; nothing is stored"),
     ("POST", "/api/expectations", "freeze an expectation entry {entry, frozen_by}"),
     ("POST", "/api/replications", "check a run against a frozen entry {entry_id, run_id}"),
@@ -319,6 +327,22 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(200, api.run_record(p[1]))
             if len(p) == 4 and p[0] == "runs" and p[2] == "outputs" and p[3].endswith(".csv"):
                 return self._csv(api.run_output_csv(p[1], p[3][:-4]), f"{p[1]}_{p[3]}")
+            if len(p) == 3 and p[0] == "runs" and p[2].startswith("appendix."):
+                fmt = p[2].split(".", 1)[1]
+                ctype = {"md": "text/markdown; charset=utf-8", "html": "text/html; charset=utf-8",
+                         "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"}.get(fmt)
+                if ctype is None:
+                    raise KeyError(f"no appendix format '{fmt}'")
+                return self._send(200, api.appendix(p[1], fmt), ctype,
+                                  {"Content-Disposition": f'attachment; filename="run_{p[1]}_methods.{fmt}"'})
+            if len(p) == 3 and p[0] == "runs" and p[2] == "diff":
+                return self._json(200, api.run_diff(p[1], _q(qs, "other") or ""))
+            if len(p) == 3 and p[0] == "datasets" and p[2] == "changes":
+                from taxnetlab.timecompare import ownership_changes
+
+                return self._json(200, ownership_changes(api._dataset(p[1]), _q(qs, "from") or "", _q(qs, "to") or ""))
+            if p == ["reference"]:
+                return self._json(200, api.references())
             if len(p) == 3 and p[0] == "runs" and p[2] == "report.html":
                 body = api.run_report(p[1]).encode("utf-8")
                 return self._send(200, body, "text/html; charset=utf-8",
@@ -375,6 +399,26 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(200, api.check_replication(str(body.get("entry_id") or ""), str(body.get("run_id") or "")))
             if p == ["jobs"]:
                 return self._json(202, api.jobs.submit(body))
+            if p == ["reference"]:
+                import base64
+                import binascii
+
+                try:
+                    data = base64.b64decode(str(body.get("csv_base64") or ""), validate=True)
+                except binascii.Error:
+                    raise ValueError("'csv_base64' must be base64-encoded file content") from None
+                return self._json(200, api.add_reference(data, str(body.get("retrieved") or ""),
+                                                         str(body.get("filename") or "")))
+            if len(p) == 3 and p[0] == "datasets" and p[2] == "complete_reference":
+                return self._json(200, api.complete_from_reference(p[1], str(body.get("reference_id") or ""),
+                                                                   str(body.get("period") or ""),
+                                                                   str(body.get("name") or "") or None))
+            if p == ["suite", "import_job"]:
+                return self._json(202, api.submit_suite_import(body))
+            if p == ["pick"]:
+                from taxnetlab import picker
+
+                return self._json(200, picker.pick(str(body.get("kind") or "")))
             if len(p) == 3 and p[0] == "jobs" and p[2] == "cancel":
                 return self._json(200, api.jobs.cancel(p[1]))
             if p == ["runs"]:

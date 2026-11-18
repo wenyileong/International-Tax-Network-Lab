@@ -21,4 +21,6 @@ Every release is built and self-tested by CI on a Windows runner. A release is p
 * the licence decision (`LICENSE`) and an archived release with a DOI;
 * the IP decision for the patent-method engine (it may stay at `interface`; release 1.0 needs only two engines).
 
-Code signing (plan s 11.2) is optional; until then each release publishes SHA-256 checksums.
+Code signing (plan s 11.2) is optional; until then each release publishes SHA-256 checksums. Signing removes the Windows SmartScreen warning and needs a code-signing certificate held by the author (an organisation-validated or individual certificate from a certificate authority, or Azure Trusted Signing); the build then signs `taxnetlab.exe` and the installer with `signtool` before the checksums are written.
+
+Continuous integration runs on GitHub Actions. A private repository has a monthly allowance of minutes; when it is used up, runs stay queued and never start (as happened to 1.0.0rc2). Check the allowance under Settings, Billing and plans, before a release.

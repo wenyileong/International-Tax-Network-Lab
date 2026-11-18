@@ -29,8 +29,8 @@ a = Analysis(
     [str(ROOT / "packaging" / "launcher.py")],
     pathex=[str(ROOT / "src")],
     datas=datas,
-    hiddenimports=["rscore", "rscore.services", "rscore.importers.ashare"],
-    excludes=["tkinter", "numpy", "scipy", "pandas", "matplotlib", "IPython", "pytest", "hypothesis", "PIL"],
+    hiddenimports=["rscore", "rscore.services", "rscore.importers.ashare", "tkinter", "tkinter.filedialog"],
+    excludes=["numpy", "scipy", "pandas", "matplotlib", "IPython", "pytest", "hypothesis", "PIL"],
     noarchive=False,
 )
 pyz = PYZ(a.pure)

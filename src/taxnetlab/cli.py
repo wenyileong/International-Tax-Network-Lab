@@ -20,6 +20,7 @@
 from __future__ import annotations
 
 import argparse
+import io
 import json
 import sys
 import tempfile
@@ -377,6 +378,15 @@ def cmd_selftest(args: argparse.Namespace) -> int:
               "suite project brought into the Lab with the review choices applied")
         check(demo.PERSON not in "".join(ds.csv_text(t) for t in ds.tables), "natural persons never reach the Lab")
         check(suite_vendored().get("commit") is not None, "vendored core records its source commit")
+        import zipfile as _zf
+
+        run_a = api.run({"engine_id": "vtrl2018.tax_routing", "dataset_id": did, "parameters": {}})["record"]["run_id"]
+        run_b = api.run({"engine_id": "vtrl2018.tax_routing", "dataset_id": did,
+                         "parameters": {"minimum_tax_rate": 0.15}})["record"]["run_id"]
+        diff = api.run_diff(run_a, run_b)
+        check([x["name"] for x in diff["parameters"]] == ["minimum_tax_rate"], "minimum tax scenario runs; run comparison")
+        with _zf.ZipFile(io.BytesIO(api.appendix(run_b, "docx"))) as z:
+            check("minimum" in z.read("word/document.xml").decode("utf-8"), "methods appendix written as Word")
 
         server = AppServer(api, find_port(18766))
         t = threading.Thread(target=server.serve_forever, daemon=True)

@@ -1,6 +1,25 @@
 # Changelog
 
-## Unreleased (review of 1.0.0rc2)
+## 1.0.0rc3 (18 November 2026)
+
+Third release candidate. Plan: `docs/PLAN_1_0_RC3_SCAFFOLD.md`; status: `docs/BUILD_1_0_RC3_STATUS.md`.
+
+New:
+
+* GDP reference data: the World Bank's own CSV file (indicator NY.GDP.MKTP.CD) is added once, kept with its
+  hash and retrieval date, and completes any dataset with GDP for a chosen year, cited to the World Bank.
+* Global minimum tax scenario in tax routes (`minimum_tax_rate`, `substance_carve_out`; off by default), a
+  labelled extension of van 't Riet and Lejour, checked against a brute-force oracle.
+* Methods appendix of any run as Word, Markdown or HTML, with the software and data cited in OSCOLA form.
+* Comparison of two runs: method, data, parameters, warnings and output rows that differ.
+* Ownership change between two dates (Network page, `GET /api/datasets/{id}/changes`).
+* Search by entity or jurisdiction name on the Network page.
+* A-share imports run in the background with a stage indicator; "Browse..." opens the system's file and
+  folder dialogs on the Research Suite page.
+* Scaffolded at `interface` status: `vtrl2018.income_types` (interest and royalties) and
+  `robustness.ownership` (missing ownership data).
+
+### Corrections (review of 1.0.0rc2)
 
 Engine corrections found by testing each engine against brute-force or independently written references
 (`tests/test_engine_oracles.py`). Results on datasets with GDP for the analysed period are unchanged; every

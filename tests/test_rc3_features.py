@@ -64,7 +64,7 @@ def test_completion_from_reference_feeds_conduits_and_sinks(tmp_path, api):
     assert gdp[("CHN", "2024")] == 18743803170827.2
     src = [s for s in ds.tables["sources"] if s["source_id"] == res["source_id"]]
     assert src and src[0]["licence_class"] == "public_attribution" and "World Bank" in src[0]["title"]
-    assert "VGB" in res["missing"]  # in the dataset, no value in the file: reported, never filled
+    assert {"CYM", "GBR"} <= set(res["missing"]) and "CYM" not in res["filled"]  # reported, never filled
     with pytest.raises(ValueError):
         api.complete_from_reference(did, ref["reference_id"], "1990")
 
@@ -145,7 +145,7 @@ def test_minimum_tax_floor_and_neutral_settings():
     assert min(on.values()) >= 0.15 - 1e-12
     assert all(on[k] >= off[k] - 1e-12 for k in off)
     p, rep = eng.resolve_parameters({"minimum_tax_rate": 0.9})
-    assert not rep.ok and rep.errors[0].code == "out_of_range"
+    assert not rep.ok and rep.errors[0].code == "bad_parameter"
 
 
 # ---------------------------------------------------------------- F5 change over time
@@ -159,7 +159,7 @@ def test_ownership_changes_between_two_dates():
     head = lines[0].split(",")
     i_to, i_from, i_frac = head.index("valid_to"), head.index("valid_from"), head.index("fraction")
     row1 = lines[1].split(",")
-    row1[i_to] = "2020-06-30"  # ended
+    row1[i_from], row1[i_to] = "2010-01-01", "2020-06-30"  # held from 2010, ended in mid-2020
     lines[1] = ",".join(row1)
     texts["ownership"] = "\n".join(lines) + "\n"
     moved, rep = Dataset.from_csv_texts("dated", texts, {})

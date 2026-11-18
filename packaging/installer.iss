@@ -1,6 +1,6 @@
 ; Inno Setup script for the per-user Windows installer (plan s 10.2, Phase 9; s 11).
 ; Build on Windows after dist\taxnetlab.exe exists:
-;   iscc /DAppVersion=1.0.0rc2 packaging\installer.iss
+;   iscc /DAppVersion=1.0.0rc3 packaging\installer.iss
 ; The installer needs no administrator rights: it installs under the user's local application folder,
 ; adds Start menu shortcuts and an uninstaller, and never touches the user's workspace (Documents\TaxNetLab).
 

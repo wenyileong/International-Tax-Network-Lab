@@ -50,8 +50,11 @@
   function store(key, value) { try { localStorage.setItem("taxnetlab." + key, value); } catch (e) { /* storage unavailable */ } }
   function recall(key) { try { return localStorage.getItem("taxnetlab." + key); } catch (e) { return null; } }
 
+  let localeSeq = 0;
   async function loadLocale(tag) {
+    const seq = ++localeSeq;
     const data = await api("GET", "locales/" + encodeURIComponent(tag));
+    if (seq !== localeSeq) return;  // a later choice is loading: the last choice wins
     S.strings = data.strings; S.locale = tag;
     document.documentElement.lang = tag;
     document.documentElement.dir = (data.meta && data.meta.dir) || "ltr";
@@ -289,6 +292,18 @@
     const plotNode = el("div", { class: "plot tall" });
     const note = el("p", { class: "legend-note" });
     const panel = el("div", { class: "side-panel" }, [el("p", { class: "muted", i18n: "network.click_hint" })]);
+    // Find an entity or jurisdiction by name or identifier (Chinese names included).
+    const findList = el("datalist", { id: "net-find-list" });
+    const find = el("input", { type: "search", list: "net-find-list", style: "min-width:260px", "data-i18n-placeholder": "network.find_ph",
+      placeholder: t("network.find_ph"), "aria-label": t("network.find") });
+    find.addEventListener("change", () => {
+      const q = find.value.trim().toLowerCase();
+      if (!q || !plotNode._tnlNodes) return;
+      const hit = plotNode._tnlNodes.find((n) => n.id.toLowerCase() === q || (n.label || "").toLowerCase() === q)
+        || plotNode._tnlNodes.find((n) => n.id.toLowerCase().includes(q) || (n.label || "").toLowerCase().includes(q));
+      if (hit) plotNode._tnlShow(hit.id, true); else toast(t("network.not_found", { q: find.value }));
+    });
+    root.append(el("div", { class: "controls" }, [el("label", { class: "field" }, [el("span", { i18n: "network.find" }), find]), findList]));
     root.append(el("div", { class: "grid", style: "grid-template-columns: minmax(0,3fr) minmax(240px,1fr)" }, [
       el("div", { class: "card" }, [guide("network.graph"), plotNode, note]), el("div", { class: "card" }, [el("h2", { i18n: "network.details" }), panel])]));
 
@@ -301,13 +316,37 @@
       if (st.as_of) q.set("as_of", st.as_of);
       const v = await api("GET", `datasets/${S.datasetId}/view?${q}`);
       drawNetwork(plotNode, v, st, panel);
+      findList.replaceChildren(...v.nodes.slice(0, 5000).map((n) => el("option", { value: n.label && n.label !== n.id ? n.label : n.id, text: n.id })));
       note.replaceChildren(el("strong", { text: t("network.direction") + ": " }), t("dir." + v.meta.direction.replace(/[^a-z]+/g, "_")),
         "  ·  ", t("network.as_of") + ": " + (st.as_of || t("network.current")),
         v.excluded.length ? "  ·  " + t("network.excluded", { n: v.excluded.length }) : "");
     }
     [viewSel, colourSel, ruleSel, asOf, dom].forEach((c) => c.addEventListener("change", () => draw().catch(fail)));
     await draw();
+    root.append(el("div", { class: "spacer" }), changesCard());
   };
+
+  // Ownership change between two dates (relations added, removed, or with a changed stake).
+  function changesCard() {
+    const from = el("input", { type: "date" }), to = el("input", { type: "date" });
+    const out = el("div");
+    const go = el("button", { class: "btn btn-ghost", i18n: "changes.go", onclick: async () => {
+      if (!from.value || !to.value) { toast(t("changes.need_dates")); return; }
+      try {
+        const c = await api("GET", `datasets/${S.datasetId}/changes?from=${from.value}&to=${to.value}`);
+        const rows = (list, kind) => list.map((r) => ({ change: t("changes." + kind), relation_id: r.relation_id, holder: r.holder, holder_jurisdiction: r.holder_jurisdiction,
+          held: r.held, held_jurisdiction: r.held_jurisdiction, fraction: r.fraction }));
+        const all = rows(c.added, "added").concat(rows(c.removed, "removed"), rows(c.changed, "changed"));
+        out.replaceChildren(el("p", { text: t("changes.summary", { a: c.counts.added, r: c.counts.removed, c: c.counts.changed, from: c.from, to: c.to }) }),
+          c.jurisdictions.length ? renderTable(["jurisdiction_id", "gained", "lost", "net"], c.jurisdictions) : "",
+          all.length ? el("details", {}, [el("summary", { i18n: "changes.relations" }), renderTable(["change", "relation_id", "holder", "holder_jurisdiction", "held", "held_jurisdiction", "fraction"], all)]) : "");
+        applyI18n(out);
+      } catch (e) { fail(e); }
+    } });
+    return el("div", { class: "card" }, [el("h2", { i18n: "changes.title" }), el("p", { class: "muted small", i18n: "changes.lede" }),
+      el("div", { class: "controls" }, [el("label", { class: "field" }, [el("span", { i18n: "changes.from" }), from]),
+        el("label", { class: "field" }, [el("span", { i18n: "changes.to" }), to]), go]), out]);
+  }
 
   function drawNetwork(node, v, st, panel) {
     const isJ = v.meta.view === "jurisdiction";
@@ -385,11 +424,20 @@
       : { name: `${v.meta.view}_view_edges`, columns: ["relation_id", "source", "target", "fraction", "value_amount", "value_currency", "share_class", "source_id"], rows: v.edges });
     // One listener per chart; it always dispatches to the handler of the latest drawing.
     if (!node._tnlBound) { node.on("plotly_click", (ev) => node._tnlClick && node._tnlClick(ev)); node._tnlBound = true; }
+    node._tnlNodes = v.nodes;
     node._tnlClick = (ev) => {
       const p = ev.points && ev.points[0];
       if (!p || p.customdata === undefined) return;
-      const n = pos[p.customdata];
+      node._tnlShow(p.customdata, false);
+    };
+    node._tnlShow = (id, mark) => {
+      const n = pos[id];
       if (!n) return;
+      if (mark && window.Plotly) {  // ring the node found by search
+        const r = isJ ? 0.07 : 0.04;
+        window.Plotly.relayout(node, { shapes: [{ type: "circle", xref: "x", yref: "y", x0: n.x - r, x1: n.x + r, y0: n.y - r, y1: n.y + r,
+          line: { color: "#ef4444", width: 3 } }] });
+      }
       const out = v.edges.filter((e) => e.source === n.id), inn = v.edges.filter((e) => e.target === n.id);
       const rows = Object.entries(n.attributes).filter(([, val]) => val !== null && val !== "" && val !== undefined);
       panel.replaceChildren(
@@ -449,7 +497,8 @@
     const saved = (() => { try { return JSON.parse(recall("routes." + S.datasetId) || "null"); } catch (e) { return null; } })();
     const R = Object.assign({ period: periods[periods.length - 1], host: null, home: null, adjust: null, payer: null, recipient: null,
       settings: { penalty: defaults.penalty, tolerance: defaults.tolerance, max_intermediates: defaults.max_intermediates,
-        world_average: defaults.world_average, centrality_weights: defaults.centrality_weights }, overrides: [],
+        world_average: defaults.world_average, centrality_weights: defaults.centrality_weights,
+        minimum_tax_rate: defaults.minimum_tax_rate, substance_carve_out: defaults.substance_carve_out }, overrides: [],
       elig: { eligibility: defaults.eligibility, holding_fraction: defaults.holding_fraction, holding_days: defaults.holding_days,
         assume_beneficial_ownership: defaults.assume_beneficial_ownership, assume_ppt: defaults.assume_ppt, assume_lob: defaults.assume_lob } }, saved || {});
     if (!R.elig) R.elig = { eligibility: defaults.eligibility, holding_fraction: defaults.holding_fraction, holding_days: defaults.holding_days,
@@ -490,6 +539,8 @@
       tolerance: slider(0, 0.02, 0.0005), max_intermediates: sel(["1", "2", "3", "4", "5"], String(R.settings.max_intermediates)),
       world_average: sel(["unweighted", "gdp"], R.settings.world_average, (v) => t("routes.wa." + v)),
       centrality_weights: sel(["gdp_product", "unweighted"], R.settings.centrality_weights, (v) => t("routes.w." + v)),
+      minimum_tax_rate: el("input", { type: "number", min: 0, max: 0.5, step: 0.005, value: R.settings.minimum_tax_rate ?? 0 }),
+      substance_carve_out: el("input", { type: "number", min: 0, max: 1, step: 0.05, value: R.settings.substance_carve_out ?? 0 }),
     };
     settings.tolerance.value = R.settings.tolerance;
     const tolV = el("output", { class: "mono" });
@@ -526,6 +577,8 @@
         field("param.penalty", settings.penalty), field("param.tolerance", row(settings.tolerance, tolV)),
         field("param.max_intermediates", settings.max_intermediates), field("param.world_average", settings.world_average),
         field("param.centrality_weights", settings.centrality_weights)]),
+      el("h2", { style: "margin-top:14px", i18n: "routes.min_tax_title" }), el("p", { class: "muted small", i18n: "routes.min_tax_note" }),
+      field("param.minimum_tax_rate", settings.minimum_tax_rate), field("param.substance_carve_out", settings.substance_carve_out),
       el("div", { class: "spacer" }), status,
       el("p", { class: "muted small", i18n: "routes.exploratory_note" }), question, el("div", { style: "height:8px" }), pinBtn,
     ]);
@@ -571,7 +624,8 @@
     function params(extra) {
       return Object.assign({ period: R.period, penalty: Number(settings.penalty.value), tolerance: Number(settings.tolerance.value),
         max_intermediates: Number(settings.max_intermediates.value), world_average: settings.world_average.value,
-        centrality_weights: settings.centrality_weights.value, overrides: R.overrides.map((o) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined))),
+        centrality_weights: settings.centrality_weights.value, minimum_tax_rate: Number(settings.minimum_tax_rate.value) || 0,
+        substance_carve_out: Number(settings.substance_carve_out.value) || 0, overrides: R.overrides.map((o) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined))),
         eligibility: elig.eligibility.value, holding_fraction: Number(elig.holding_fraction.value), holding_days: Number(elig.holding_days.value),
         assume_beneficial_ownership: elig.assume_beneficial_ownership.value, assume_ppt: elig.assume_ppt.value, assume_lob: elig.assume_lob.value }, extra || {});
     }
@@ -579,7 +633,8 @@
       R.host = hostSel.value; R.home = homeSel.value; R.adjust = adjustSel.value; R.payer = payerSel.value; R.recipient = recipientSel.value;
       if (R.period !== periodSel.value) { R.period = periodSel.value; codes = codesFor(R.period); R.overrides = []; }
       R.settings = { penalty: Number(settings.penalty.value), tolerance: Number(settings.tolerance.value),
-        max_intermediates: Number(settings.max_intermediates.value), world_average: settings.world_average.value, centrality_weights: settings.centrality_weights.value };
+        max_intermediates: Number(settings.max_intermediates.value), world_average: settings.world_average.value, centrality_weights: settings.centrality_weights.value,
+        minimum_tax_rate: Number(settings.minimum_tax_rate.value) || 0, substance_carve_out: Number(settings.substance_carve_out.value) || 0 };
       R.elig = { eligibility: elig.eligibility.value, holding_fraction: Number(elig.holding_fraction.value), holding_days: Number(elig.holding_days.value),
         assume_beneficial_ownership: elig.assume_beneficial_ownership.value, assume_ppt: elig.assume_ppt.value, assume_lob: elig.assume_lob.value };
       store("routes." + S.datasetId, JSON.stringify(R));
@@ -1299,6 +1354,7 @@
     root.append(el("div", { class: "spacer" }));
     const complete = completeForm();
     if (complete) root.append(complete, el("div", { class: "spacer" }));
+    root.append(referenceCard(), el("div", { class: "spacer" }));
     root.append(el("div", { class: "grid grid-2" }, [synthForm(), importForm()]), el("div", { class: "spacer" }), codingForm());
   };
 
@@ -1537,6 +1593,37 @@
     return box;
   }
 
+  // Compare this run with another: what differs in method, data, parameters, warnings and outputs.
+  function compareBox(rec) {
+    const sel = el("select", { class: "select" }, [el("option", { value: "", text: t("runs.compare_pick") })]);
+    const out = el("div");
+    api("GET", "runs").then((list) => list.filter((r) => r.run_id !== rec.run_id).slice(0, 200).forEach((r) =>
+      sel.append(el("option", { value: r.run_id, text: `${r.run_id}  ·  ${r.engine_id}${r.engine_id === rec.engine.engine_id ? "" : " *"}` })))).catch(fail);
+    sel.addEventListener("change", async () => {
+      if (!sel.value) { out.replaceChildren(); return; }
+      try {
+        const d = await api("GET", `runs/${rec.run_id}/diff?other=${encodeURIComponent(sel.value)}`);
+        const parts = [el("p", { class: d.identical ? "ok-text" : "", text: d.identical ? t("runs.compare_identical") : t("runs.compare_differs") })];
+        if (d.method.length || d.data.length) parts.push(renderTable(["field", "a", "b"], d.method.concat(d.data)));
+        if (d.parameters.length) parts.push(el("h4", { i18n: "runs.compare_parameters" }), renderTable(["name", "a", "b"], d.parameters.map((p) => ({ name: p.name, a: JSON.stringify(p.a), b: JSON.stringify(p.b) }))));
+        const outs = Object.entries(d.outputs).map(([name, o]) => ({ output: name, identical: t(o.identical ? "common.yes" : "common.no"), added: o.added, removed: o.removed, changed: o.changed }));
+        parts.push(el("h4", { i18n: "runs.compare_outputs" }), renderTable(["output", "identical", "added", "removed", "changed"], outs));
+        for (const [name, o] of Object.entries(d.outputs)) {
+          if (!o.rows || !o.rows.length) continue;
+          parts.push(el("details", {}, [el("summary", { text: t("runs.compare_rows", { name, n: o.changed }) }),
+            renderTable(["key", "column", "a", "b"], o.rows.flatMap((r) => r.columns.map((c) => ({ key: r.key ? Object.values(r.key).join(" · ") : "", column: c, a: r.a[c], b: r.b[c] }))))]));
+        }
+        ["warnings", "assumptions"].forEach((f) => {
+          if (d[f].only_a.length || d[f].only_b.length) parts.push(el("details", {}, [el("summary", { text: t(f === "warnings" ? "runs.compare_warnings" : "runs.compare_assumptions") }),
+            el("ul", { class: "small" }, d[f].only_a.map((x) => el("li", { text: "A: " + x })).concat(d[f].only_b.map((x) => el("li", { text: "B: " + x }))))]));
+        });
+        out.replaceChildren(...parts);
+        applyI18n(out);
+      } catch (e) { fail(e); }
+    });
+    return el("div", { class: "small", style: "margin:8px 0" }, [el("label", { class: "field" }, [el("span", { i18n: "runs.compare_with" }), sel]), out]);
+  }
+
   function showRun(box, rec, outputs) {
     const replayOut = el("span", { class: "small" });
     const isDemo = rec.engine.track === "demonstration";
@@ -1552,8 +1639,10 @@
           } }),
           el("a", { class: "btn btn-ghost", href: `/api/runs/${rec.run_id}/record.json`, i18n: "runs.download_record" }),
           el("a", { class: "btn btn-ghost", href: `/api/runs/${rec.run_id}/report.html`, i18n: "runs.download_report" }),
-          el("a", { class: "btn btn-ghost", href: `/api/runs/${rec.run_id}/package.zip`, i18n: "runs.download_package" })])]),
-      replayOut, replicationBox(rec),
+          el("a", { class: "btn btn-ghost", href: `/api/runs/${rec.run_id}/package.zip`, i18n: "runs.download_package" }),
+          el("a", { class: "btn btn-ghost", href: `/api/runs/${rec.run_id}/appendix.docx`, i18n: "runs.appendix_docx" }),
+          el("a", { class: "btn btn-ghost", href: `/api/runs/${rec.run_id}/appendix.md`, i18n: "runs.appendix_md" })])]),
+      replayOut, replicationBox(rec), compareBox(rec),
       el("p", { class: "small" }, [el("span", { class: "badge", style: "--c:" + (STATUS_COLOURS[rec.engine.status] || "#64748b"), text: t("status." + rec.engine.status) }), "  ",
         t("track." + rec.engine.track), "  ·  ", t("runs.outcome") + ": ", el("strong", { text: t("outcome." + rec.outcome) }), "  ·  ", rec.dataset.name, " (", t("status." + rec.dataset.data_status), ")"]),
       el("p", { class: "muted small", text: rec.engine.boundary }),
@@ -1636,6 +1725,18 @@
   function reviewStatus(s) { return tOr("suite.review_status." + String(s).replace(/\s+/g, "_"), s); }
   function tableName(tb) { return tOr("table." + tb, tOr("suite.table." + tb, tb)); }
   function busy(btn, on) { btn.disabled = on; btn.classList.toggle("busy", on); }
+  // Opens the system's own file or folder dialog (the server runs on this computer). Hidden where it cannot open.
+  function browseButton(kind, input, then) {
+    const b = el("button", { class: "btn btn-ghost", i18n: "suite.browse", type: "button", onclick: async () => {
+      busy(b, true);
+      try {
+        const r = await api("POST", "pick", { kind });
+        if (!r.available) { b.hidden = true; toast(t("suite.browse_unavailable")); return; }
+        if (r.path) { input.value = r.path; if (then) then(); }
+      } catch (e) { fail(e); } finally { busy(b, false); }
+    } });
+    return b;
+  }
 
   PAGES.suite = async function (root) {
     header(root, "suite.title", "suite.lede");
@@ -1653,6 +1754,7 @@
       "data-i18n-placeholder": "suite.release_ph", placeholder: t("suite.release_ph") });
     const relInfo = el("div");
     const readBtn = el("button", { class: "btn btn-ghost", i18n: "suite.read", onclick: () => readRelease().catch(fail) });
+    const browseRel = browseButton("folder", relPath, () => readRelease().catch(fail));
     async function readRelease() {
       const path = cleanPath(relPath.value);
       if (!path) { toast(t("suite.need_path")); return; }
@@ -1665,7 +1767,7 @@
       } catch (e) { relInfo.replaceChildren(el("p", { class: "err-text", text: e.message })); } finally { busy(readBtn, false); }
     }
     root.append(el("div", { class: "card" }, [el("h2", { i18n: "suite.release_title" }), el("p", { class: "muted small", i18n: "suite.release_lede" }),
-      el("div", { class: "controls" }, [el("label", { class: "field", style: "flex:1 1 420px" }, [el("span", { i18n: "suite.release_folder" }), relPath]), readBtn]),
+      el("div", { class: "controls" }, [el("label", { class: "field", style: "flex:1 1 420px" }, [el("span", { i18n: "suite.release_folder" }), relPath]), browseRel, readBtn]),
       el("p", { class: "muted small", i18n: "suite.path_hint" }), relInfo]));
     root.append(el("div", { class: "spacer" }));
 
@@ -1691,10 +1793,20 @@
       const go = el("button", { class: "btn", i18n: "suite.import", onclick: async () => {
         const companies = all.checked ? [] : boxes.filter((b) => b.checked).map((b) => b.value);
         if (!all.checked && !companies.length) { toast(t("suite.no_companies")); return; }
-        busy(go, true); out.replaceChildren(el("p", { class: "muted", i18n: "suite.importing" }));
+        busy(go, true);
+        const bar = el("progress", { max: 1, value: 0, class: "progress" }), msg = el("span", { class: "muted small" });
+        out.replaceChildren(el("p", { class: "muted", i18n: "suite.importing" }), el("div", { class: "btn-row" }, [bar, msg]));
+        applyI18n(out);
         try {
-          const detail = await api("POST", "suite/import", { release: info.folder, project: target.value || null, companies,
+          let job = await api("POST", "suite/import_job", { release: info.folder, project: target.value || null, companies,
             assume_consolidated: cons.checked, accept_suggestions: acc.checked, min_confidence: Number(minc.value) || 0 });
+          while (job.state === "queued" || job.state === "running") {
+            await new Promise((r) => setTimeout(r, 300));
+            job = await api("GET", "jobs/" + job.job_id);
+            bar.value = job.progress; msg.textContent = job.message ? t("suite.stage", { stage: job.message }) : "";
+          }
+          if (job.state !== "done") throw new Error(job.error || job.state);
+          const detail = job.result;
           S.suiteProject = detail.path; store("suite.project", detail.path);
           out.replaceChildren(el("p", { class: "ok-text", text: t("suite.imported", { name: detail.name }) }));
           showProject(detail);
@@ -1719,6 +1831,7 @@
 
     // ---- projects card
     const openPath = el("input", { type: "text", class: "mono", style: "width:100%", "data-i18n-placeholder": "suite.open_ph", placeholder: t("suite.open_ph") });
+    const browseOpen = browseButton("sqlite", openPath, () => openBtn.click());
     const openBtn = el("button", { class: "btn btn-ghost", i18n: "suite.open", onclick: async () => {
       const p = cleanPath(openPath.value);
       if (!p) { toast(t("suite.need_path")); return; }
@@ -1740,7 +1853,7 @@
     root.append(el("div", { class: "card" }, [el("h2", { i18n: "suite.projects_title" }), el("p", { class: "muted small", i18n: "suite.projects_lede" }),
       projectList,
       el("p", { class: "muted small", text: t("suite.workspace_folder", { folder: status.workspace_folder }) }),
-      el("div", { class: "controls" }, [el("label", { class: "field", style: "flex:1 1 360px" }, [el("span", { i18n: "suite.open_label" }), openPath]), openBtn])]));
+      el("div", { class: "controls" }, [el("label", { class: "field", style: "flex:1 1 360px" }, [el("span", { i18n: "suite.open_label" }), openPath]), browseOpen, openBtn])]));
     root.append(el("div", { class: "spacer" }), projectBox);
 
     // ---- one project: review and hand-over
@@ -1855,6 +1968,55 @@
       el("dl", { class: "side-panel" }, rows.flatMap(([k, v]) => [el("dt", { i18n: k }), el("dd", { text: v })]))]);
   }
 
+  // GDP reference data: the World Bank's own CSV file, added once and used to complete any dataset.
+  function referenceCard() {
+    const file = el("input", { type: "file", accept: ".csv" });
+    const retrieved = el("input", { type: "date", value: new Date().toISOString().slice(0, 10) });
+    const list = el("div"), out = el("div");
+    const refSel = el("select", { class: "select" }), periodSel = el("select", { class: "select" });
+    let refs = [];
+    async function refresh() {
+      refs = await api("GET", "reference");
+      list.replaceChildren(refs.length ? renderTable(["reference_id", "indicator", "retrieved", "jurisdictions", "first", "last"],
+        refs.map((r) => ({ reference_id: r.reference_id, indicator: r.indicator, retrieved: r.retrieved, jurisdictions: r.jurisdictions,
+          first: r.periods[0], last: r.periods[r.periods.length - 1] }))) : el("p", { class: "muted small", i18n: "ref.none" }));
+      refSel.replaceChildren(...refs.map((r) => el("option", { value: r.reference_id, text: `${r.reference_id} (${r.retrieved})` })));
+      fillPeriods();
+      applyI18n(list);
+    }
+    function fillPeriods() {
+      const r = refs.find((x) => x.reference_id === refSel.value);
+      periodSel.replaceChildren(...(r ? r.periods.slice().reverse() : []).map((p) => el("option", { value: p, text: p })));
+    }
+    refSel.addEventListener("change", fillPeriods);
+    const add = el("button", { class: "btn btn-ghost", i18n: "ref.add", onclick: async () => {
+      if (!file.files.length) { toast(t("coding.choose_file")); return; }
+      busy(add, true);
+      try {
+        const buf = new Uint8Array(await file.files[0].arrayBuffer());
+        let bin = ""; for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode.apply(null, buf.subarray(i, i + 0x8000));
+        const r = await api("POST", "reference", { csv_base64: btoa(bin), retrieved: retrieved.value, filename: file.files[0].name });
+        toast(t("ref.added", { n: r.jurisdictions })); await refresh();
+      } catch (e) { out.replaceChildren(el("p", { class: "err-text", text: e.message })); } finally { busy(add, false); }
+    } });
+    const go = el("button", { class: "btn", i18n: "ref.complete", onclick: async () => {
+      if (!S.dataset || !refSel.value) return;
+      busy(go, true);
+      try {
+        const res = await api("POST", `datasets/${S.datasetId}/complete_reference`, { reference_id: refSel.value, period: periodSel.value });
+        out.replaceChildren(el("p", { class: res.saved ? "ok-text" : "err-text", text: res.saved ? t("ref.completed", { id: res.dataset_id, n: res.filled.length }) : t("data.import_blocked") }),
+          res.missing.length ? el("p", { class: "muted small", text: t("ref.missing", { list: res.missing.join(", ") }) }) : "", issuesList(res.validation));
+        if (res.saved) await loadDatasets(res.dataset_id);
+      } catch (e) { out.replaceChildren(el("p", { class: "err-text", text: e.message })); } finally { busy(go, false); }
+    } });
+    refresh().catch(fail);
+    return el("div", { class: "card" }, [el("h2", { i18n: "ref.title" }), el("p", { class: "muted small", i18n: "ref.lede" }),
+      el("div", { class: "controls" }, [el("label", { class: "field" }, [el("span", { i18n: "ref.file" }), file]),
+        el("label", { class: "field" }, [el("span", { i18n: "ref.retrieved" }), retrieved]), add]), list,
+      S.dataset ? el("div", { class: "controls", style: "margin-top:12px" }, [el("label", { class: "field" }, [el("span", { i18n: "ref.set" }), refSel]),
+        el("label", { class: "field" }, [el("span", { i18n: "ref.period" }), periodSel]), go]) : "", out]);
+  }
+
   // Complete a dataset (GDP, tax rules): a new dataset with tables added or replaced; the original is kept.
   function completeForm() {
     if (!S.dataset) return null;
@@ -1915,8 +2077,14 @@
     const lsel = document.getElementById("locale-select");
     lsel.replaceChildren(...S.locales.map((l) => el("option", { value: l.tag, text: l.native_name })));
     lsel.value = pick;
+    // The handler is attached before the first language file loads, and whatever the menu shows when loading ends
+    // is applied, so that a choice made during start-up is never lost (the menu and the page always agree).
+    let booted = false;
+    lsel.addEventListener("change", async () => {
+      try { await loadLocale(lsel.value); if (booted) { await loadDataset(); await route(); } } catch (e) { fail(e); }
+    });
     await loadLocale(pick);
-    lsel.addEventListener("change", async () => { try { await loadLocale(lsel.value); await loadDataset(); await route(); } catch (e) { fail(e); } });
+    if (lsel.value !== pick) await loadLocale(lsel.value);
     // Display theme (plan s 11.1 smoke test, step 6): system, light or dark; charts are redrawn in the new colours.
     const themeSel = document.getElementById("theme-select");
     const applyTheme = (v) => { if (v === "system") delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = v; };
@@ -1939,6 +2107,8 @@
       document.body.replaceChildren(el("div", { class: "empty", style: "padding:80px" }, [el("h1", { text: t("quit.done") }), el("p", { text: t("quit.close_tab") })]));
     });
     window.addEventListener("hashchange", route);
+    booted = true;
+    if (lsel.value !== S.locale) await loadLocale(lsel.value);
     await route();
   }
   boot().catch((e) => { console.error(e); document.getElementById("page").textContent = "Failed to start: " + e.message; });

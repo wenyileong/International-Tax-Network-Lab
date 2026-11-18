@@ -34,6 +34,8 @@ Unverified legal rows can be used, but every result that relies on them is flagg
 
 **Completing a dataset.** A method may need data the dataset lacks, such as GDP for conduits and sinks or tax rules for tax routes. Under **Complete this dataset** on the Data page, download a template that already lists the dataset's jurisdictions, fill in the rows you need (each with a source) and upload it; rows left blank are ignored. The result is a new dataset that records what it was completed from; the original is unchanged. *Add rows* keeps the stored rows and replaces only rows with the same key; *Replace whole tables* replaces each table you supply.
 
+**GDP from the World Bank.** Under **GDP reference data** on the Data page, add the World Bank's GDP file once: download it from data.worldbank.org (indicator NY.GDP.MKTP.CD, "Download CSV"), unzip it, and choose the file whose name starts with `API_`, giving the date you downloaded it. The Lab keeps the file with its hash and never goes online. Then choose a year and **Add GDP to this dataset**: a new dataset receives the GDP of every jurisdiction the file covers, cited to the World Bank; jurisdictions the file does not cover (such as the British Virgin Islands) are listed and left without GDP, never estimated.
+
 ## 4. Firm-level data from A-share Company Intelligence
 
 The **Research Suite** page brings the ownership data of Chinese listed groups, as released by A-share Company Intelligence, into the Lab. The conversion is the Research Suite's own: the Lab carries a pinned copy of the suite's core, so a release is converted here exactly as ResearchSuite.exe converts it.
@@ -49,8 +51,8 @@ From the command line: `taxnetlab import-ashare RELEASE_FOLDER --bring`, and `ta
 
 ## 5. The analysis pages
 
-* **Network**, **Matrix**: the ownership network in ownership or value-flow direction, and a jurisdiction-by-jurisdiction matrix.
-* **Tax routes** (van 't Riet and Lejour): the cheapest route for dividends from a host to a home jurisdiction, the treaty-shopping gain, and conduit rankings. Move a tax rate or a treaty and everything recomputes. **Treaty conditions** can be applied: holding thresholds are checked against facts you set, and the beneficial ownership, principal purpose and limitation-on-benefits tests stay undecided unless you record an assumption. *Strict* withholds undecided benefits; *contingent* keeps them and flags the routes that rely on them.
+* **Network**, **Matrix**: the ownership network in ownership or value-flow direction, and a jurisdiction-by-jurisdiction matrix. **Find** locates an entity or jurisdiction by name or identifier (Chinese names included); **Change between two dates** lists the relations added or ended, and the stakes changed, between two dates.
+* **Tax routes** (van 't Riet and Lejour): the cheapest route for dividends from a host to a home jurisdiction, the treaty-shopping gain, and conduit rankings. Move a tax rate or a treaty and everything recomputes. **Treaty conditions** can be applied: holding thresholds are checked against facts you set, and the beneficial ownership, principal purpose and limitation-on-benefits tests stay undecided unless you record an assumption. *Strict* withholds undecided benefits; *contingent* keeps them and flags the routes that rely on them. **Global minimum tax** is a scenario added to the source model, which predates it: every jurisdiction tops up the tax on profit to the rate you set, less a share excluded for substance; tax on dividends received and withholding taxes are unchanged, so the page shows which treaty-shopping gains the minimum tax removes and which remain. It is off unless you set a rate, and it is recorded in every result.
 * **Conduits and sinks** (Garcia-Bernardo and others): where corporate value ends up relative to the size of the economy, and through which jurisdictions it passes.
 * **Topology** (persistent homology): clusters and loops among jurisdictions across all scales, and which jurisdictions the structure depends on.
 * **Compare**: the methods' measures side by side; a rank is shown only where every reading of the source agrees.
@@ -64,6 +66,8 @@ A **run** is one engine on one dataset with one set of parameters. Its record is
 * **Execute** runs in the background with progress; **Cancel** stops it and stores nothing.
 * **Replay** re-executes a run and compares every output hash.
 * **Report (HTML)** is a self-contained report suitable for archiving with a paper.
+* **Methods appendix** (Word or Markdown) describes the run in prose (data, method, parameters, assumptions, warnings, results and how to reproduce it) with the software and data sources cited in OSCOLA form, ready to adapt for a paper.
+* **Compare with another run** shows what differs: method, data, parameters, warnings, and the output rows that changed.
 * **Export package** writes a ZIP by reproducibility tier: A (public data: everything), B (licensed data: no data tables, outputs only if the licence permits), C (synthetic: everything, labelled synthetic). Another researcher reproduces it with **Reproduce** or `taxnetlab reproduce`.
 * A run is marked **stale** when the engine's version or status has changed since.
 

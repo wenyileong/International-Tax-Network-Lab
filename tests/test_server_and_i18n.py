@@ -124,7 +124,7 @@ FAMILY_PREFIXES = ("status.", "outcome.", "table.", "rule.", "view.", "track.", 
                    "gen.", "integrity.", "network.colour.", "overview.band.", "entity_type.", "issue.", "choice.",
                    "param.", "output.", "measure.demo.", "relief.", "routes.basis.", "routes.c.", "routes.ov.", "routes.wa.",
                    "routes.w.", "routes.part.", "routes.k.", "routes.", "guide.", "conduits.", "mode.", "topology.f.", "compare.class.", "rep.verdict.", "glossary.status.",
-                   "suite.col.", "suite.origin.", "suite.reason.", "suite.review_status.", "suite.table.", "prov.mode.")
+                   "suite.col.", "suite.origin.", "suite.reason.", "suite.review_status.", "suite.table.", "prov.mode.", "changes.")
 
 
 def test_dynamic_key_families_complete():
@@ -157,6 +157,7 @@ def test_dynamic_key_families_complete():
         "suite.table.": {"companies", "ownership_observations", "subsidiary_observations", "control_observations",
                          "control_edges", "financial_facts"},
         "prov.mode.": {"merge", "replace"},
+        "changes.": {"added", "removed", "changed"},
         "choice.": {c for e in __import__("taxnetlab.engines", fromlist=["list_engines"]).list_engines()
                     for p in e.parameters for c in (p.choices or ())},
     }

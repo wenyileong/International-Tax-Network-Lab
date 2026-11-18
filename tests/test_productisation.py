@@ -73,7 +73,8 @@ def test_every_documented_route_answers(server_url_token):
     real = json.loads(body)["dataset_id"]  # real ISO jurisdictions: a completion template exists
     subs = {"FILE.sqlite": urllib.parse.quote(project), "{dataset_id}/completion_template": real + "/completion_template",
             "{tag}": "en-GB", "{dataset_id}": did, "{table}": "ownership", "{run_id}": rid, "{name}": "jurisdiction_summary",
-            "{job_id}": jid, "{entry_id}": "route-test", "{engine_id}": "demo.link_summary"}
+            "{job_id}": jid, "{entry_id}": "route-test", "{engine_id}": "demo.link_summary",
+            "RUN_ID": rid, "DATE": "2025-01-01"}
     for method, path, _ in ROUTES:
         if path == "/api/quit":
             continue

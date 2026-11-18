@@ -26,6 +26,10 @@ The interface server listens on 127.0.0.1 only. POST requests need the header `X
 | GET | `/api/runs/{run_id}/outputs/{name}.csv` | an output table as stored |
 | GET | `/api/runs/{run_id}/record.json` | the run record |
 | GET | `/api/runs/{run_id}/report.html` | self-contained HTML report |
+| GET | `/api/runs/{run_id}/appendix.md` | methods appendix (also appendix.html and appendix.docx) |
+| GET | `/api/runs/{run_id}/diff?other=RUN_ID` | what differs between two runs |
+| GET | `/api/datasets/{dataset_id}/changes?from=DATE&to=DATE` | ownership relations added, removed or changed |
+| GET | `/api/reference` | GDP reference sets added from World Bank files |
 | GET | `/api/runs/{run_id}/package.zip?include_outputs=true\|false` | export package by reproducibility tier |
 | GET | `/api/jobs` | background runs |
 | GET | `/api/jobs/{job_id}` | one background run: state, progress, run id |
@@ -43,6 +47,10 @@ The interface server listens on 127.0.0.1 only. POST requests need the header `X
 | POST | `/api/runs` | execute and store a run {engine_id, dataset_id, parameters, research_question} |
 | POST | `/api/runs/{run_id}/replay` | re-execute a run and compare output hashes |
 | POST | `/api/jobs` | execute a run in the background (same body as /api/runs); 202 |
+| POST | `/api/reference` | add a World Bank indicator CSV {csv_base64, retrieved, filename?} |
+| POST | `/api/datasets/{dataset_id}/complete_reference` | add GDP from a reference set {reference_id, period, name?} |
+| POST | `/api/suite/import_job` | import an A-share release in the background (body as /api/suite/import); 202 |
+| POST | `/api/pick` | open the system's file or folder dialog {kind: folder|sqlite|zip|csv} |
 | POST | `/api/jobs/{job_id}/cancel` | cancel a background run; nothing is stored |
 | POST | `/api/expectations` | freeze an expectation entry {entry, frozen_by} |
 | POST | `/api/replications` | check a run against a frozen entry {entry_id, run_id} |
@@ -64,9 +72,22 @@ The interface, the command line and notebooks use the same class: `Api(Workspace
 
 ### `about() -> 'dict[str, Any]'`
 
+### `add_reference(data: 'bytes', retrieved: 'str', filename: 'str' = '') -> 'dict[str, Any]'`
+
+### `appendix(run_id: 'str', fmt: 'str' = 'md') -> 'bytes'`
+
+The run as a methods appendix: Markdown, HTML or Word (.docx).
+
 ### `check_replication(entry_id: 'str', run_id: 'str') -> 'dict[str, Any]'`
 
 Compare a stored run with a frozen entry; the report is stored once and never rewritten.
+
+### `complete_from_reference(dataset_id: 'str', reference_id: 'str', period: 'str', name: 'str | None' = None) -> 'dict[str, Any]'`
+
+A new dataset with GDP for the dataset's real jurisdictions from a reference set, for one period.
+
+Values are copied exactly; jurisdictions without a value for the period are reported, never filled.
+Stored GDP rows for the same jurisdiction and period are replaced (rows with the same key).
 
 ### `completion_template(dataset_id: 'str') -> 'bytes'`
 
@@ -76,7 +97,7 @@ A real-sample coding template (GDP and tax rules) listing the dataset's real jur
 
 ### `datasets() -> 'list[dict[str, Any]]'`
 
-### `derive_dataset(base_id: 'str', name: 'str', texts: 'dict[str, str]', mode: 'str' = 'merge') -> 'dict[str, Any]'`
+### `derive_dataset(base_id: 'str', name: 'str', texts: 'dict[str, str]', mode: 'str' = 'merge', extra_meta: 'dict[str, Any] | None' = None) -> 'dict[str, Any]'`
 
 Complete a dataset: a new dataset with some tables added or replaced (the original is unchanged).
 
@@ -120,6 +141,10 @@ Import a coding template or any ZIP of table CSV files (plan s 5.4).
 Execute an engine without storing anything. Previews are exploratory, not results: they carry
 the engine status and become citable only when pinned as a run (same parameters via :meth:`run`).
 
+### `reference_values(reference_id: 'str') -> 'dict[str, dict[str, float]]'`
+
+### `references() -> 'list[dict[str, Any]]'`
+
 ### `replay(run_id: 'str') -> 'dict[str, Any]'`
 
 ### `replications() -> 'list[dict[str, Any]]'`
@@ -128,6 +153,8 @@ the engine status and become citable only when pinned as a run (same parameters 
 
 ### `run(spec: 'dict[str, Any]') -> 'dict[str, Any]'`
 
+### `run_diff(run_a: 'str', run_b: 'str') -> 'dict[str, Any]'`
+
 ### `run_output_csv(run_id: 'str', name: 'str') -> 'str'`
 
 ### `run_record(run_id: 'str') -> 'dict[str, Any]'`
@@ -135,6 +162,11 @@ the engine status and become citable only when pinned as a run (same parameters 
 ### `run_report(run_id: 'str') -> 'str'`
 
 ### `runs() -> 'list[dict[str, Any]]'`
+
+### `submit_suite_import(body: 'dict[str, Any]') -> 'dict[str, Any]'`
+
+An A-share import as a background job. The suite's importer reports three stages (reading, importing,
+writing the report); the job's progress shows the stage, not a measured share of the work.
 
 ### `suite_status() -> 'dict[str, Any]'`
 

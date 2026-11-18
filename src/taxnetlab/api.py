@@ -137,7 +137,8 @@ class Api:
 
         return self.import_csv(name, read_template_zip(data), mapping)
 
-    def derive_dataset(self, base_id: str, name: str, texts: dict[str, str], mode: str = "merge") -> dict[str, Any]:
+    def derive_dataset(self, base_id: str, name: str, texts: dict[str, str], mode: str = "merge",
+                       extra_meta: dict[str, Any] | None = None) -> dict[str, Any]:
         """Complete a dataset: a new dataset with some tables added or replaced (the original is unchanged).
 
         ``merge``: rows supplied replace stored rows with the same primary key and the rest are added;
@@ -194,7 +195,7 @@ class Api:
         parent = self.ws.dataset_meta(base_id)
         meta = {"origin": "derived", "derived_from": base_id, "derived_from_name": parent["name"], "mode": mode,
                 "tables_changed": changed, "unfilled_rows_skipped": skipped,
-                "parent_metadata": parent.get("metadata") or {}}
+                "parent_metadata": parent.get("metadata") or {}, **(extra_meta or {})}
         ds, report = Dataset.from_csv_texts(name or f"{parent['name']} (completed)", out, meta)
         if ds is None:
             return {"saved": False, "validation": report.to_dict(), "unfilled_rows_skipped": skipped}
@@ -203,6 +204,67 @@ class Api:
         return {"saved": True, "dataset_id": did, "name": self.ws.dataset_meta(did)["name"],
                 "validation": report.to_dict(), "already_present": existed, "tables_changed": changed,
                 "unfilled_rows_skipped": skipped}
+
+    # ------------------------------------------------------------------ reference data (GDP)
+    @property
+    def reference(self):
+        from taxnetlab.reference import ReferenceStore
+
+        return ReferenceStore(self.ws.root / "reference")
+
+    def add_reference(self, data: bytes, retrieved: str, filename: str = "") -> dict[str, Any]:
+        return self.reference.add(data, retrieved, filename)
+
+    def references(self) -> list[dict[str, Any]]:
+        return self.reference.list()
+
+    def reference_values(self, reference_id: str) -> dict[str, dict[str, float]]:
+        return self.reference.values(reference_id)
+
+    def complete_from_reference(self, dataset_id: str, reference_id: str, period: str,
+                                name: str | None = None) -> dict[str, Any]:
+        """A new dataset with GDP for the dataset's real jurisdictions from a reference set, for one period.
+
+        Values are copied exactly; jurisdictions without a value for the period are reported, never filled.
+        Stored GDP rows for the same jurisdiction and period are replaced (rows with the same key)."""
+        import csv
+        import io
+
+        ds = self._dataset(dataset_id)
+        meta = self.reference.meta(reference_id)
+        values = self.reference.values(reference_id)
+        period = str(period or "").strip()
+        if period not in meta["periods"]:
+            raise ValueError(f"the reference set has no values for period '{period}'; it covers "
+                             f"{meta['periods'][0]} to {meta['periods'][-1]}" if meta["periods"] else "it has no values")
+        real = sorted(r["jurisdiction_id"] for r in ds.tables["jurisdictions"]
+                      if not r.get("fictional") and len(str(r["jurisdiction_id"])) == 3)
+        if not real:
+            raise ValueError("the dataset has no real (ISO 3166-1 alpha-3) jurisdictions")
+        source_id = f"WB_{meta['attribute'].upper()}_{reference_id}"
+        found = {j: values[j][period] for j in real if period in values.get(j, {})}
+        missing = [j for j in real if j not in found]
+        if not found:
+            raise ValueError(f"the reference set has no value for any of the dataset's jurisdictions in {period}")
+        attrs, src = io.StringIO(), io.StringIO()
+        w = csv.writer(attrs, lineterminator="\n")
+        w.writerow(["jurisdiction_id", "attribute", "period", "value", "unit", "currency", "source_id"])
+        for j, v in found.items():
+            w.writerow([j, meta["attribute"], period, repr(float(v)), meta["unit"], meta["currency"], source_id])
+        w = csv.writer(src, lineterminator="\n")
+        w.writerow(["source_id", "title", "custodian", "url", "retrieval_date", "licence_class", "licence_terms",
+                    "oscola_citation"])
+        w.writerow([source_id, meta["title"], "World Bank", "https://data.worldbank.org/indicator/" + meta["indicator"],
+                    meta["retrieved"], "public_attribution", "CC BY 4.0",
+                    f"World Bank, 'World Development Indicators: {meta['indicator']}' <https://data.worldbank.org/"
+                    f"indicator/{meta['indicator']}> accessed {_oscola_date(meta['retrieved'])}"])
+        res = self.derive_dataset(dataset_id, name or f"{self.ws.dataset_meta(dataset_id)['name']} (GDP {period})",
+                                  {"jurisdiction_attributes": attrs.getvalue(), "sources": src.getvalue()}, "merge",
+                                  extra_meta={"reference": {"reference_id": reference_id, "file_sha256": meta["file_sha256"],
+                                                            "indicator": meta["indicator"], "period": period,
+                                                            "missing": missing}})
+        res.update(source_id=source_id, missing=missing, filled=sorted(found))
+        return res
 
     def completion_template(self, dataset_id: str) -> bytes:
         """A real-sample coding template (GDP and tax rules) listing the dataset's real jurisdictions."""
@@ -226,6 +288,42 @@ class Api:
 
             self._suite = SuiteBridge(self.ws)
         return self._suite
+
+    def submit_suite_import(self, body: dict[str, Any]) -> dict[str, Any]:
+        """An A-share import as a background job. The suite's importer reports three stages (reading, importing,
+        writing the report); the job's progress shows the stage, not a measured share of the work."""
+        from taxnetlab import progress
+
+        stages = {"reading": (0.05, "reading the release"), "importing": (0.3, "importing"),
+                  "writing report": (0.9, "writing the import report")}
+
+        def say(stage: str) -> None:
+            frac, text = stages.get(stage, (None, stage))
+            if frac is None:
+                return
+            if stage == "reading":  # nothing written yet: the only point at which cancelling is safe
+                progress.report(frac, 1.0, text)
+                return
+            tracker = progress._current.get()  # once writing has begun, the import runs to the end
+            if tracker is not None:
+                tracker.fraction, tracker.message = frac, text
+
+        companies = body.get("companies") or []
+        if isinstance(companies, str):
+            companies = companies.replace(";", ",").split(",")
+        if not isinstance(companies, list):
+            raise ValueError("'companies' must be a list of security codes")
+
+        def task():
+            return self.suite.import_release(str(body.get("project") or "") or None, str(body.get("release") or ""),
+                                             project_name=str(body.get("project_name") or "") or None,
+                                             companies=[str(c) for c in companies],
+                                             assume_consolidated=bool(body.get("assume_consolidated")),
+                                             accept_suggestions=bool(body.get("accept_suggestions")),
+                                             min_confidence=body.get("min_confidence") or 0.0, progress=say)
+
+        job = self.jobs.submit_task("suite_import", task, label=str(body.get("release") or ""))
+        return job if "state" in job else self.jobs.get(job["job_id"])
 
     def suite_status(self) -> dict[str, Any]:
         from taxnetlab import suite
@@ -302,6 +400,28 @@ class Api:
     def run_record(self, run_id: str) -> dict[str, Any]:
         record = runs.load_record(self.ws, run_id)
         return {"record": record, "summary": runs.summarise(record), "outputs": self._outputs(run_id)}
+
+    def run_diff(self, run_a: str, run_b: str) -> dict[str, Any]:
+        from taxnetlab import rundiff
+        from taxnetlab.engines import get_engine
+
+        a, b = runs.load_record(self.ws, run_a), runs.load_record(self.ws, run_b)
+        try:
+            keys = dict(get_engine(a["engine"]["engine_id"]).spec.output_keys)
+        except KeyError:
+            keys = {}
+        return rundiff.diff(a, b, self._outputs(run_a), self._outputs(run_b), keys)
+
+    def appendix(self, run_id: str, fmt: str = "md") -> bytes:
+        """The run as a methods appendix: Markdown, HTML or Word (.docx)."""
+        from taxnetlab import methods_text
+
+        if fmt not in ("md", "html", "docx"):
+            raise ValueError("format must be md, html or docx")
+        doc = methods_text.appendix(runs.load_record(self.ws, run_id), self._outputs(run_id))
+        if fmt == "docx":
+            return methods_text.to_docx(doc)
+        return (methods_text.to_markdown(doc) if fmt == "md" else methods_text.to_html(doc)).encode("utf-8")
 
     def run_output_csv(self, run_id: str, name: str) -> str:
         return runs.output_text(self.ws, run_id, name)
@@ -427,3 +547,11 @@ def _typed(text: str):
         return float(text)
     except ValueError:
         return text
+
+
+def _oscola_date(iso: str) -> str:
+    """'2026-11-01' -> '1 November 2026' (OSCOLA date form)."""
+    import datetime as dt
+
+    d = dt.date.fromisoformat(iso)
+    return f"{d.day} {d.strftime('%B')} {d.year}"

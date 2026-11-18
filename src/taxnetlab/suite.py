@@ -226,7 +226,8 @@ class SuiteBridge:
 
     def import_release(self, project_path: str | Path | None, release: str | Path, *, project_name: str | None = None,
                        companies: list[str] | tuple[str, ...] = (), assume_consolidated: bool = False,
-                       accept_suggestions: bool = False, min_confidence: float = 0.0) -> dict[str, Any]:
+                       accept_suggestions: bool = False, min_confidence: float = 0.0,
+                       progress=None) -> dict[str, Any]:
         """Import a release into a project (created in the workspace when no path is given) with the suite's importer."""
         from rscore import services
 
@@ -250,7 +251,7 @@ class SuiteBridge:
         codes = tuple(str(c).strip() for c in companies if str(c).strip())
         try:
             services.run_import(project, info["folder"], companies=codes, assume_consolidated=bool(assume_consolidated),
-                                accept_suggestions=bool(accept_suggestions), min_confidence=mc)
+                                accept_suggestions=bool(accept_suggestions), min_confidence=mc, progress=progress)
         except Exception as exc:
             if created:  # do not leave an empty project behind a failed first import
                 import shutil
